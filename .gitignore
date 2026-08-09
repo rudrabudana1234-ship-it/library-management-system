@@ -9,6 +9,7 @@ db.sqlite3
 *.pot
 *.pyc
 .Python
+*.zip
 
 # Django
 *.log
@@ -31,3 +32,5 @@ frontend/.env.local
 # OS
 .DS_Store
 Thumbs.db
+
+**/node_modules/
