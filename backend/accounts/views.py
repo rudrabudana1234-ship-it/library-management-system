@@ -2,7 +2,8 @@ from rest_framework import generics, status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
-
+from backend.accounts.permissions import IsAdminOrLibrarian
+from rest_framework.views import APIView
 from .models import User
 from .serializers import (RegisterSerializer,LoginSerializer,UserSerializer,)
 
@@ -61,3 +62,10 @@ class LogoutView(generics.GenericAPIView):
                 },
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+class BookCreateView(APIView):
+    permission_classes = [IsAdminOrLibrarian, IsAuthenticated]
+    def post(self, request):
+        return Response({
+            "message": "Book created successfully"
+        })

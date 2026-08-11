@@ -29,6 +29,7 @@ class RegisterSerializer(serializers.ModelSerializer):
         ]
 
     def validate_email(self, value):
+
         if User.objects.filter(email=value).exists():
             raise serializers.ValidationError(
                 "A user with this email already exists."
@@ -53,6 +54,7 @@ class RegisterSerializer(serializers.ModelSerializer):
 
         user = User.objects.create_user(
             password=password,
+            role='member',
             **validated_data
         )
 
@@ -62,6 +64,7 @@ class RegisterSerializer(serializers.ModelSerializer):
 class LoginSerializer(serializers.Serializer):
 
     username = serializers.CharField()
+
     password = serializers.CharField(
         write_only=True
     )
@@ -99,6 +102,7 @@ class UserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
+
         fields = [
             'id',
             'username',

@@ -6,7 +6,7 @@ from django.utils import timezone
 from django.db.models import Count, Q
 from .models import Author, Book, Member, Loan
 from .serializers import AuthorSerializer, BookSerializer, MemberSerializer, LoanSerializer
-
+from .permissions import IsAuthenticatedUser
 
 class AuthorViewSet(viewsets.ModelViewSet):
     queryset = Author.objects.all()
@@ -14,21 +14,20 @@ class AuthorViewSet(viewsets.ModelViewSet):
     filter_backends = [filters.SearchFilter]
     search_fields = ['name']
 
-
 class BookViewSet(viewsets.ModelViewSet):
     queryset = Book.objects.all().select_related('author')
     serializer_class = BookSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['title', 'isbn', 'author__name']
     ordering_fields = ['title', 'available', 'created_at']
-
+    permission_classes = [IsAuthenticatedUser]
 
 class MemberViewSet(viewsets.ModelViewSet):
     queryset = Member.objects.all()
     serializer_class = MemberSerializer
     filter_backends = [filters.SearchFilter]
     search_fields = ['name', 'email', 'phone']
-
+    permission_classes = [IsAuthenticatedUser]
 
 class LoanViewSet(viewsets.ModelViewSet):
     queryset = Loan.objects.all().select_related('book', 'member')
@@ -36,6 +35,7 @@ class LoanViewSet(viewsets.ModelViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['book__title', 'member__name', 'status']
     ordering_fields = ['borrow_date', 'due_date']
+    permission_classes = [IsAuthenticatedUser]
 
     def create(self, request, *args, **kwargs):
         """Issue a book"""
@@ -98,6 +98,7 @@ class LoanViewSet(viewsets.ModelViewSet):
 
 
 class DashboardView(APIView):
+    permission_classes = [IsAuthenticatedUser]
     """Dashboard statistics"""
     
     def get(self, request):
