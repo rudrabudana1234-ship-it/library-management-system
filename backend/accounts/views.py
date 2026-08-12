@@ -2,11 +2,10 @@ from rest_framework import generics, status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
-from backend.accounts.permissions import IsAdminOrLibrarian
+from backend.accounts.permissions import IsAdminOrLibrarian, IsAdmin
 from rest_framework.views import APIView
 from .models import User
-from .serializers import (RegisterSerializer,LoginSerializer,UserSerializer,)
-
+from .serializers import (RegisterSerializer, LoginSerializer, UserSerializer, AdminCreateUserSerializer)
 
 class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
@@ -69,3 +68,35 @@ class BookCreateView(APIView):
         return Response({
             "message": "Book created successfully"
         })
+
+class AdminCreateUserView(APIView):
+
+    permission_classes = [IsAdmin]
+
+    def post(self, request):
+
+        serializer = AdminCreateUserSerializer(
+            data=request.data
+        )
+
+        if serializer.is_valid():
+
+            user = serializer.save()
+
+            return Response(
+                {
+                    'message': 'User created successfully.',
+                    'user': {
+                        'id': user.id,
+                        'username': user.username,
+                        'email': user.email,
+                        'role': user.role,
+                    }
+                },
+                status=status.HTTP_201_CREATED
+            )
+
+        return Response(
+            serializer.errors,
+            status=status.HTTP_400_BAD_REQUEST
+        )
