@@ -1,4 +1,6 @@
 from rest_framework import serializers
+
+from accounts.models import User
 from .models import Author, Book, Member, Loan
 
 
@@ -17,10 +19,27 @@ class BookSerializer(serializers.ModelSerializer):
 
 
 class MemberSerializer(serializers.ModelSerializer):
+
+    user_id = serializers.PrimaryKeyRelatedField(
+        source='user',
+        queryset=User.objects.filter(role='member'),
+        write_only=True
+    )
+
     class Meta:
         model = Member
-        fields = '__all__'
+        fields = [
+            'id',
+            'user_id',
+            'name',
+            'email',
+            'phone',
+            'address',
+            'joined_date',
+            'is_active'
+        ]
 
+        read_only_fields = ['id', 'joined_date']
 
 class LoanSerializer(serializers.ModelSerializer):
     book_title = serializers.CharField(source='book.title', read_only=True)

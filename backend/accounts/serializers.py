@@ -3,8 +3,6 @@ from rest_framework import serializers
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from .models import User
-
-
 class RegisterSerializer(serializers.ModelSerializer):
 
     password = serializers.CharField(
@@ -151,3 +149,16 @@ class AdminCreateUserSerializer(serializers.ModelSerializer):
         )
 
         return user
+
+class AdminRoleUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ['role']
+
+    def validate_role(self, value):
+        if value not in ['member', 'librarian', 'admin']:
+            raise serializers.ValidationError(
+                "Invalid role."
+            )
+
+        return value

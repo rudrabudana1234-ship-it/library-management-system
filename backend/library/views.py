@@ -21,6 +21,9 @@ from accounts.permissions import (
     IsLibrarian,
     IsMember,
     IsAdminOrLibrarian,
+    IsMemberOwnerOrAdmin,
+    IsMemberOwnerOrAdminOrLibrarian,
+    IsLoanOwnerOrAdminOrLibrarian
 )
 
 
@@ -89,9 +92,8 @@ class BookViewSet(viewsets.ModelViewSet):
 
         return [permission() for permission in permission_classes]
 
-
 class MemberViewSet(viewsets.ModelViewSet):
-
+     
     queryset = Member.objects.all()
     serializer_class = MemberSerializer
 
@@ -103,24 +105,39 @@ class MemberViewSet(viewsets.ModelViewSet):
         'phone'
     ]
 
+    def get_queryset(self):
+
+        if self.request.user.role in ['admin', 'librarian']:
+            return Member.objects.all()
+
+        return Member.objects.filter(
+            user=self.request.user
+        )
+
     def get_permissions(self):
 
-        if self.action in [
-            'create',
-            'update',
-            'partial_update'
-        ]:
-            permission_classes = [IsAdminOrLibrarian]
+        if self.action == 'create':
+
+            permission_classes = [
+                IsAdminOrLibrarian
+            ]
 
         elif self.action == 'destroy':
-            permission_classes = [IsAdmin]
+
+            permission_classes = [
+                IsMemberOwnerOrAdmin
+            ]
 
         else:
-            permission_classes = [IsAdminOrLibrarian]
 
-        return [permission() for permission in permission_classes]
+            permission_classes = [
+                IsMemberOwnerOrAdminOrLibrarian
+            ]
 
-
+        return [
+            permission()
+            for permission in permission_classes
+        ]
 class LoanViewSet(viewsets.ModelViewSet):
 
     queryset = Loan.objects.all().select_related(
@@ -146,28 +163,73 @@ class LoanViewSet(viewsets.ModelViewSet):
         'due_date'
     ]
 
+    # -----------------------------
+    # ROLE-BASED QUERYSET
+    # -----------------------------
+
+    def get_queryset(self):
+
+        # Admin and Librarian can see all loans
+        if self.request.user.role in [
+            'admin',
+            'librarian'
+        ]:
+            return self.queryset
+
+        # Member can see only their own loans
+        return self.queryset.filter(
+            member__user=self.request.user
+        )
+
+    # -----------------------------
+    # ROLE-BASED PERMISSIONS
+    # -----------------------------
+
     def get_permissions(self):
 
+        # Only Admin and Librarian can create loans
         if self.action == 'create':
-            permission_classes = [IsAdminOrLibrarian]
 
-        elif self.action == 'return_book':
-            permission_classes = [IsAdminOrLibrarian]
+            permission_classes = [
+                IsAdminOrLibrarian
+            ]
 
-        elif self.action == 'overdue':
-            permission_classes = [IsAdminOrLibrarian]
+        # Only Admin and Librarian can return books
+        elif self.action in [
+            'return_book',
+            'overdue'
+        ]:
 
+            permission_classes = [
+                IsAdminOrLibrarian
+            ]
+
+        # Only Admin can update or delete loans
         elif self.action in [
             'update',
             'partial_update',
             'destroy'
         ]:
-            permission_classes = [IsAdmin]
 
+            permission_classes = [
+                IsAdmin
+            ]
+
+        # Listing and retrieving loans
         else:
-            permission_classes = [IsAdminOrLibrarian]
 
-        return [permission() for permission in permission_classes]
+            permission_classes = [
+                IsLoanOwnerOrAdminOrLibrarian
+            ]
+
+        return [
+            permission()
+            for permission in permission_classes
+        ]
+
+    # -----------------------------
+    # CREATE / ISSUE BOOK
+    # -----------------------------
 
     def create(self, request, *args, **kwargs):
 
@@ -176,15 +238,21 @@ class LoanViewSet(viewsets.ModelViewSet):
         book_id = request.data.get('book')
 
         try:
-            book = Book.objects.get(id=book_id)
+
+            book = Book.objects.get(
+                id=book_id
+            )
 
         except Book.DoesNotExist:
+
             return Response(
                 {"error": "Book not found"},
                 status=status.HTTP_404_NOT_FOUND
             )
 
+        # Check book availability
         if book.available <= 0:
+
             return Response(
                 {"error": "Book is not available"},
                 status=status.HTTP_400_BAD_REQUEST
@@ -200,6 +268,7 @@ class LoanViewSet(viewsets.ModelViewSet):
 
         loan = serializer.save()
 
+        # Reduce available copies
         book.available -= 1
         book.save()
 
@@ -208,34 +277,67 @@ class LoanViewSet(viewsets.ModelViewSet):
             status=status.HTTP_201_CREATED
         )
 
-    @action(detail=True, methods=['post'])
-    def return_book(self, request, pk=None):
+    # -----------------------------
+    # RETURN BOOK
+    # -----------------------------
+
+    @action(
+        detail=True,
+        methods=['post']
+    )
+    def return_book(
+        self,
+        request,
+        pk=None
+    ):
 
         """Return a book"""
 
         loan = self.get_object()
 
+        # Check if already returned
         if loan.status == 'returned':
+
             return Response(
                 {"error": "Book already returned"},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
         loan.status = 'returned'
+
         loan.return_date = timezone.now().date()
+
         loan.save()
 
+        # Increase available copies
         book = loan.book
+
         book.available += 1
+
         book.save()
 
         return Response({
+
             "message": "Book returned successfully",
-            "loan": LoanSerializer(loan).data
+
+            "loan": LoanSerializer(
+                loan
+            ).data
+
         })
 
-    @action(detail=False, methods=['get'])
-    def overdue(self, request):
+    # -----------------------------
+    # OVERDUE LOANS
+    # -----------------------------
+
+    @action(
+        detail=False,
+        methods=['get']
+    )
+    def overdue(
+        self,
+        request
+    ):
 
         """List all overdue loans"""
 
@@ -246,6 +348,7 @@ class LoanViewSet(viewsets.ModelViewSet):
             due_date__lt=today
         )
 
+        # Update status
         overdue_loans.update(
             status='overdue'
         )
@@ -255,8 +358,9 @@ class LoanViewSet(viewsets.ModelViewSet):
             many=True
         )
 
-        return Response(serializer.data)
-
+        return Response(
+            serializer.data
+        )
 
 class DashboardView(APIView):
 

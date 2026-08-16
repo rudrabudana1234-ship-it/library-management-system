@@ -2,10 +2,11 @@ from rest_framework import generics, status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
-from backend.accounts.permissions import IsAdminOrLibrarian, IsAdmin
+from .permissions import IsAdminOrLibrarian, IsAdmin
 from rest_framework.views import APIView
 from .models import User
-from .serializers import (RegisterSerializer, LoginSerializer, UserSerializer, AdminCreateUserSerializer)
+from .serializers import (RegisterSerializer, LoginSerializer, UserSerializer, AdminCreateUserSerializer, AdminRoleUpdateSerializer)
+
 
 class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
@@ -80,17 +81,16 @@ class AdminCreateUserView(APIView):
         )
 
         if serializer.is_valid():
-
             user = serializer.save()
 
             return Response(
                 {
-                    'message': 'User created successfully.',
-                    'user': {
-                        'id': user.id,
-                        'username': user.username,
-                        'email': user.email,
-                        'role': user.role,
+                    "message": "User created successfully",
+                    "user": {
+                        "id": user.id,
+                        "username": user.username,
+                        "email": user.email,
+                        "role": user.role,
                     }
                 },
                 status=status.HTTP_201_CREATED
@@ -100,3 +100,46 @@ class AdminCreateUserView(APIView):
             serializer.errors,
             status=status.HTTP_400_BAD_REQUEST
         )
+
+class AdminRoleManagementView(APIView):
+
+    permission_classes = [IsAdmin]
+
+    def patch(self, request, user_id):
+
+        try:
+            user = User.objects.get(id=user_id)
+
+        except User.DoesNotExist:
+            return Response(
+                {"error": "User not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        if user == request.user and request.data.get('role') != 'admin':
+           return Response(
+            {"error": "You cannot remove your own admin role."},
+            status=status.HTTP_400_BAD_REQUEST
+            )
+
+        serializer = AdminRoleUpdateSerializer(
+            user,
+            data=request.data,
+            partial=True
+        )
+
+        serializer.is_valid(
+            raise_exception=True
+        )
+
+        serializer.save()
+
+        return Response({
+            "message": "User role updated successfully",
+            "user": {
+                "id": user.id,
+                "username": user.username,
+                "email": user.email,
+                "role": user.role
+            }
+        })

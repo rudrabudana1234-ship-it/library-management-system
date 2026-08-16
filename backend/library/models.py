@@ -1,6 +1,8 @@
 from django.db import models
 from django.utils import timezone
 
+from django.conf import settings
+
 class Author(models.Model):
     name = models.CharField(max_length=200)
     bio = models.TextField(blank=True, null=True)
@@ -24,6 +26,14 @@ class Book(models.Model):
 
 
 class Member(models.Model):
+
+    user = models.OneToOneField (
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='member_profile',
+    )
+      
+
     name = models.CharField(max_length=150)
     email = models.EmailField(unique=True)
     phone = models.CharField(max_length=15, blank=True)
