@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     'library',
     'rest_framework_simplejwt.token_blacklist',
     'accounts',
+    'django_filters',
 ]
 
 MIDDLEWARE = [
@@ -89,7 +90,13 @@ REST_FRAMEWORK = {
     ),
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
+
     ),
+    'DEFAULT_FILTER_BACKENDS': [
+        'django_filters.rest_framework.DjangoFilterBackend',
+        'rest_framework.filters.SearchFilter',
+        'rest_framework.filters.OrderingFilter',
+    ],
 }
 
 WSGI_APPLICATION = 'config.wsgi.application'

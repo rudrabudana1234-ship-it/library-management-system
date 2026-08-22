@@ -1,10 +1,11 @@
 from rest_framework import viewsets, status, filters
+from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from django.utils import timezone
-from django.db.models import Count, Q
+from django.db.models import Count, Q, Sum
 
 from .models import Author, Book, Member, Loan
 from .serializers import (
@@ -23,7 +24,7 @@ from accounts.permissions import (
     IsAdminOrLibrarian,
     IsMemberOwnerOrAdmin,
     IsMemberOwnerOrAdminOrLibrarian,
-    IsLoanOwnerOrAdminOrLibrarian
+    IsLoanOwnerOrAdminOrLibrarian,
 )
 
 
@@ -93,28 +94,92 @@ class BookViewSet(viewsets.ModelViewSet):
         return [permission() for permission in permission_classes]
 
 class MemberViewSet(viewsets.ModelViewSet):
-     
+
     queryset = Member.objects.all()
     serializer_class = MemberSerializer
 
-    filter_backends = [filters.SearchFilter]
+    # ==========================================
+    # SEARCH + FILTERING + ORDERING
+    # ==========================================
 
+    filter_backends = [
+        filters.SearchFilter,
+        filters.OrderingFilter,
+    ]
+
+    # Search fields
     search_fields = [
         'name',
         'email',
-        'phone'
+        'phone',
     ]
+
+    # Fields allowed for sorting
+    ordering_fields = [
+        'name',
+        'email',
+        'joined_date',
+    ]
+
+    # Default ordering
+    ordering = [
+        'name'
+    ]
+
+    # ==========================================
+    # ROLE-BASED QUERYSET
+    # ==========================================
 
     def get_queryset(self):
 
-        if self.request.user.role in ['admin', 'librarian']:
-            return Member.objects.all()
+        # Admin and Librarian
+        # can see all members
+        if self.request.user.role in [
+            'admin',
+            'librarian'
+        ]:
+            queryset = Member.objects.all()
 
-        return Member.objects.filter(
-            user=self.request.user
+        # Ordinary member
+        # can see only their own profile
+        else:
+            queryset = Member.objects.filter(
+                user=self.request.user
+            )
+
+        # ======================================
+        # ACTIVE / INACTIVE FILTER
+        # ======================================
+
+        is_active = self.request.query_params.get(
+            'is_active'
         )
 
+        if is_active == 'true':
+
+            queryset = queryset.filter(
+                is_active=True
+            )
+
+        elif is_active == 'false':
+
+            queryset = queryset.filter(
+                is_active=False
+            )
+
+        return queryset
+
+    # ==========================================
+    # ROLE-BASED PERMISSIONS
+    # ==========================================
+
     def get_permissions(self):
+
+        # -------------------------------
+        # CREATE
+        # -------------------------------
+        # Only Admin and Librarian
+        # can create members
 
         if self.action == 'create':
 
@@ -122,11 +187,21 @@ class MemberViewSet(viewsets.ModelViewSet):
                 IsAdminOrLibrarian
             ]
 
+        # -------------------------------
+        # DELETE
+        # -------------------------------
+        # Admin or member owner
+
         elif self.action == 'destroy':
 
             permission_classes = [
                 IsMemberOwnerOrAdmin
             ]
+
+        # -------------------------------
+        # OTHER ACTIONS
+        # -------------------------------
+        # Admin / Librarian / Owner
 
         else:
 
@@ -147,9 +222,20 @@ class LoanViewSet(viewsets.ModelViewSet):
 
     serializer_class = LoanSerializer
 
+    # =========================
+    # SEARCH + FILTERING
+    # =========================
+
     filter_backends = [
+        DjangoFilterBackend,
         filters.SearchFilter,
         filters.OrderingFilter
+    ]
+
+    filterset_fields = [
+    'status',
+    'book',
+    'member',
     ]
 
     search_fields = [
@@ -160,41 +246,49 @@ class LoanViewSet(viewsets.ModelViewSet):
 
     ordering_fields = [
         'borrow_date',
-        'due_date'
+        'due_date',
+        'return_date',
+        'status'
     ]
 
-    # -----------------------------
+    ordering = [
+        '-borrow_date'
+    ]
+
+    # =========================
     # ROLE-BASED QUERYSET
-    # -----------------------------
+    # =========================
 
     def get_queryset(self):
 
-        # Admin and Librarian can see all loans
+        # Admin + Librarian
+        # Can see all loans
         if self.request.user.role in [
             'admin',
             'librarian'
         ]:
             return self.queryset
 
-        # Member can see only their own loans
+        # Member
+        # Can see only their own loans
         return self.queryset.filter(
             member__user=self.request.user
         )
 
-    # -----------------------------
+    # =========================
     # ROLE-BASED PERMISSIONS
-    # -----------------------------
+    # =========================
 
     def get_permissions(self):
 
-        # Only Admin and Librarian can create loans
+        # Create loan
         if self.action == 'create':
 
             permission_classes = [
                 IsAdminOrLibrarian
             ]
 
-        # Only Admin and Librarian can return books
+        # Return + overdue
         elif self.action in [
             'return_book',
             'overdue'
@@ -204,7 +298,7 @@ class LoanViewSet(viewsets.ModelViewSet):
                 IsAdminOrLibrarian
             ]
 
-        # Only Admin can update or delete loans
+        # Update/delete
         elif self.action in [
             'update',
             'partial_update',
@@ -215,7 +309,7 @@ class LoanViewSet(viewsets.ModelViewSet):
                 IsAdmin
             ]
 
-        # Listing and retrieving loans
+        # List/retrieve
         else:
 
             permission_classes = [
@@ -227,13 +321,11 @@ class LoanViewSet(viewsets.ModelViewSet):
             for permission in permission_classes
         ]
 
-    # -----------------------------
+    # =========================
     # CREATE / ISSUE BOOK
-    # -----------------------------
+    # =========================
 
     def create(self, request, *args, **kwargs):
-
-        """Issue a book"""
 
         book_id = request.data.get('book')
 
@@ -246,15 +338,19 @@ class LoanViewSet(viewsets.ModelViewSet):
         except Book.DoesNotExist:
 
             return Response(
-                {"error": "Book not found"},
+                {
+                    "error": "Book not found"
+                },
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        # Check book availability
+        # Check availability
         if book.available <= 0:
 
             return Response(
-                {"error": "Book is not available"},
+                {
+                    "error": "Book is not available"
+                },
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -277,9 +373,9 @@ class LoanViewSet(viewsets.ModelViewSet):
             status=status.HTTP_201_CREATED
         )
 
-    # -----------------------------
+    # =========================
     # RETURN BOOK
-    # -----------------------------
+    # =========================
 
     @action(
         detail=True,
@@ -291,20 +387,18 @@ class LoanViewSet(viewsets.ModelViewSet):
         pk=None
     ):
 
-        """Return a book"""
-
         loan = self.get_object()
 
-        # Check if already returned
         if loan.status == 'returned':
 
             return Response(
-                {"error": "Book already returned"},
+                {
+                    "error": "Book already returned"
+                },
                 status=status.HTTP_400_BAD_REQUEST
             )
 
         loan.status = 'returned'
-
         loan.return_date = timezone.now().date()
 
         loan.save()
@@ -313,7 +407,6 @@ class LoanViewSet(viewsets.ModelViewSet):
         book = loan.book
 
         book.available += 1
-
         book.save()
 
         return Response({
@@ -326,20 +419,15 @@ class LoanViewSet(viewsets.ModelViewSet):
 
         })
 
-    # -----------------------------
+    # =========================
     # OVERDUE LOANS
-    # -----------------------------
+    # =========================
 
     @action(
         detail=False,
         methods=['get']
     )
-    def overdue(
-        self,
-        request
-    ):
-
-        """List all overdue loans"""
+    def overdue(self, request):
 
         today = timezone.now().date()
 
@@ -364,40 +452,93 @@ class LoanViewSet(viewsets.ModelViewSet):
 
 class DashboardView(APIView):
 
-    permission_classes = [IsAdminOrLibrarian]
+    permission_classes = [IsAuthenticatedUser]
 
     def get(self, request):
 
-        total_books = Book.objects.count()
+        # --------------------------------
+        # ADMIN / LIBRARIAN DASHBOARD
+        # --------------------------------
 
-        total_available = Book.objects.aggregate(
-            total=Count(
-                'id',
-                filter=Q(available__gt=0)
+        if request.user.role in ['admin', 'librarian']:
+
+            total_books = Book.objects.count()
+
+            total_available = Book.objects.aggregate(
+                total=Count(
+                    'id',
+                    filter=Q(available__gt=0)
+                )
+            )['total'] or 0
+
+            total_copies = Book.objects.aggregate(
+                total=Sum('quantity')
+            )['total'] or 0
+
+            total_members = Member.objects.filter(
+                is_active=True
+            ).count()
+
+            total_loans = Loan.objects.count()
+
+            active_loans = Loan.objects.filter(
+                status='borrowed'
+            ).count()
+
+            overdue_loans = Loan.objects.filter(
+                status='overdue'
+            ).count()
+
+            data = {
+                "role": request.user.role,
+                "total_books": total_books,
+                "available_books": total_available,
+                "total_copies": total_copies,
+                "total_members": total_members,
+                "active_loans": active_loans,
+                "overdue_loans": overdue_loans,
+                "total_loans": total_loans,
+            }
+
+            return Response(data)
+
+        # --------------------------------
+        # MEMBER DASHBOARD
+        # --------------------------------
+
+        try:
+            member = Member.objects.get(
+                user=request.user
             )
-        )['total'] or 0
 
-        total_members = Member.objects.filter(
-            is_active=True
-        ).count()
+        except Member.DoesNotExist:
 
-        total_loans = Loan.objects.count()
+            return Response(
+                {
+                    "role": "member",
+                    "message": "Member profile not found.",
+                    "active_loans": 0,
+                    "overdue_loans": 0,
+                    "total_loans": 0,
+                }
+            )
 
-        active_loans = Loan.objects.filter(
+        member_loans = Loan.objects.filter(
+            member=member
+        )
+
+        active_loans = member_loans.filter(
             status='borrowed'
         ).count()
 
-        overdue_loans = Loan.objects.filter(
+        overdue_loans = member_loans.filter(
             status='overdue'
         ).count()
 
+        total_loans = member_loans.count()
+
         data = {
-            "total_books": total_books,
-            "available_books": total_available,
-            "total_copies": Book.objects.aggregate(
-                total=Count('quantity')
-            ),
-            "total_members": total_members,
+            "role": "member",
             "active_loans": active_loans,
             "overdue_loans": overdue_loans,
             "total_loans": total_loans,

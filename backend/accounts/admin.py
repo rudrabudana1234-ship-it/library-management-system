@@ -24,6 +24,7 @@ class CustomUserAdmin(UserAdmin):
             'Additional Information',
             {
                 'fields': (
+                    'email',
                     'role',
                     'phone',
                     'profile_image',

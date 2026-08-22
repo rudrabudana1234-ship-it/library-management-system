@@ -3,6 +3,8 @@ from rest_framework import serializers
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from .models import User
+
+
 class RegisterSerializer(serializers.ModelSerializer):
 
     password = serializers.CharField(
@@ -87,7 +89,12 @@ class LoginSerializer(serializers.Serializer):
                 "This account is inactive."
             )
 
+        # Create JWT refresh token
         refresh = RefreshToken.for_user(user)
+
+        # Add custom information to JWT
+        refresh['username'] = user.username
+        refresh['role'] = user.role
 
         return {
             'user': UserSerializer(user).data,
@@ -118,6 +125,7 @@ class UserSerializer(serializers.ModelSerializer):
             'role',
             'created_at',
         ]
+
 
 class AdminCreateUserSerializer(serializers.ModelSerializer):
 
@@ -150,12 +158,15 @@ class AdminCreateUserSerializer(serializers.ModelSerializer):
 
         return user
 
+
 class AdminRoleUpdateSerializer(serializers.ModelSerializer):
+
     class Meta:
         model = User
         fields = ['role']
 
     def validate_role(self, value):
+
         if value not in ['member', 'librarian', 'admin']:
             raise serializers.ValidationError(
                 "Invalid role."

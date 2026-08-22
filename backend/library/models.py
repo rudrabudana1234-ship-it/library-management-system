@@ -54,7 +54,7 @@ class Loan(models.Model):
 
     book = models.ForeignKey(Book, on_delete=models.CASCADE, related_name='loans')
     member = models.ForeignKey(Member, on_delete=models.CASCADE, related_name='loans')
-    borrow_date = models.DateField(default=timezone.now)
+    borrow_date = models.DateField(default=timezone.now().date)
     due_date = models.DateField()
     return_date = models.DateField(null=True, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='borrowed')
