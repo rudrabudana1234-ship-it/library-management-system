@@ -10,12 +10,25 @@ class User(AbstractUser):
         ('admin', 'Admin'),
     )
 
+    LIBRARIAN_REQUEST_CHOICES = (
+        ('none', 'None'),
+        ('pending', 'Pending'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+    )
+
     email = models.EmailField(unique=True)
 
     role = models.CharField(
         max_length=20,
         choices=ROLE_CHOICES,
         default='member'
+    )
+
+    librarian_request = models.CharField(
+        max_length=20,
+        choices=LIBRARIAN_REQUEST_CHOICES,
+        default='none'
     )
 
     phone = models.CharField(

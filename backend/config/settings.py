@@ -13,130 +13,239 @@ https://docs.djangoproject.com/en/6.1/ref/settings/
 from pathlib import Path
 from datetime import timedelta
 
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
+
+# ==========================================
+# BASE DIRECTORY
+# ==========================================
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/6.1/howto/deployment/checklist/
+# ==========================================
+# SECURITY
+# ==========================================
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-&((mr)s@_&pf5d+p34%+e!@c2+ha27dhh1xis@%l1bsp$khp(+'
+SECRET_KEY = (
+    'django-insecure-&((mr)s@_&pf5d+p34%+e!@c2+'
+    'ha27dhh1xis@%l1bsp$khp(+'
+)
 
-# SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
 ALLOWED_HOSTS = []
 
 
-# Application definition
+# ==========================================
+# APPLICATIONS
+# ==========================================
 
 INSTALLED_APPS = [
+
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+
     'corsheaders',
+
     'rest_framework',
+
     'library',
+
     'rest_framework_simplejwt.token_blacklist',
+
     'accounts',
+
     'django_filters',
 ]
 
+
+# ==========================================
+# MIDDLEWARE
+# ==========================================
+
 MIDDLEWARE = [
+
     'corsheaders.middleware.CorsMiddleware',
+
     'django.middleware.security.SecurityMiddleware',
+
     'django.contrib.sessions.middleware.SessionMiddleware',
+
     'django.middleware.common.CommonMiddleware',
+
     'django.middleware.csrf.CsrfViewMiddleware',
+
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+
     'django.contrib.messages.middleware.MessageMiddleware',
+
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
+
+# ==========================================
+# URL CONFIGURATION
+# ==========================================
+
 ROOT_URLCONF = 'config.urls'
 
+
+# ==========================================
+# CORS
+# ==========================================
+
 CORS_ALLOWED_ORIGINS = [
+
     "http://localhost:5173",
+
     "http://127.0.0.1:5173",
+
     "http://localhost:3000",
+
     "http://127.0.0.1:3000",
+
 ]
+
+
+# ==========================================
+# TEMPLATES
+# ==========================================
 
 TEMPLATES = [
+
     {
-        'BACKEND': 'django.template.backends.django.DjangoTemplates',
+        'BACKEND':
+            'django.template.backends.django.DjangoTemplates',
+
         'DIRS': [],
+
         'APP_DIRS': True,
+
         'OPTIONS': {
+
             'context_processors': [
+
                 'django.template.context_processors.request',
+
                 'django.contrib.auth.context_processors.auth',
+
                 'django.contrib.messages.context_processors.messages',
+
             ],
+
         },
+
     },
+
 ]
 
+
+# ==========================================
+# DJANGO REST FRAMEWORK
+# ==========================================
+
 REST_FRAMEWORK = {
-    
-    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+
+    'DEFAULT_PAGINATION_CLASS':
+        'rest_framework.pagination.PageNumberPagination',
+
     'PAGE_SIZE': 10,
+
     'DEFAULT_AUTHENTICATION_CLASSES': (
+
         'rest_framework_simplejwt.authentication.JWTAuthentication',
+
     ),
+
     'DEFAULT_PERMISSION_CLASSES': (
+
         'rest_framework.permissions.IsAuthenticated',
 
     ),
+
     'DEFAULT_FILTER_BACKENDS': [
+
         'django_filters.rest_framework.DjangoFilterBackend',
+
         'rest_framework.filters.SearchFilter',
+
         'rest_framework.filters.OrderingFilter',
+
     ],
+
 }
+
+
+# ==========================================
+# WSGI
+# ==========================================
 
 WSGI_APPLICATION = 'config.wsgi.application'
 
+
+# ==========================================
+# MEDIA FILES
+# ==========================================
+
 MEDIA_URL = '/media/'
+
 MEDIA_ROOT = BASE_DIR / 'media'
 
 
-# Database
-# https://docs.djangoproject.com/en/6.1/ref/settings/#databases
+# ==========================================
+# DATABASE
+# ==========================================
 
 DATABASES = {
+
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+
+        'ENGINE':
+            'django.db.backends.sqlite3',
+
+        'NAME':
+            BASE_DIR / 'db.sqlite3',
+
     }
+
 }
 
 
-# Password validation
-# https://docs.djangoproject.com/en/6.1/ref/settings/#auth-password-validators
+# ==========================================
+# PASSWORD VALIDATION
+# ==========================================
 
 AUTH_PASSWORD_VALIDATORS = [
+
     {
-        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
+        'NAME':
+            'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
     },
+
     {
-        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+        'NAME':
+            'django.contrib.auth.password_validation.MinimumLengthValidator',
     },
+
     {
-        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
+        'NAME':
+            'django.contrib.auth.password_validation.CommonPasswordValidator',
     },
+
     {
-        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
+        'NAME':
+            'django.contrib.auth.password_validation.NumericPasswordValidator',
     },
+
 ]
 
 
-# Internationalization
-# https://docs.djangoproject.com/en/6.1/topics/i18n/
+# ==========================================
+# INTERNATIONALIZATION
+# ==========================================
 
 LANGUAGE_CODE = 'en-us'
 
@@ -147,30 +256,89 @@ USE_I18N = True
 USE_TZ = True
 
 
-# Static files (CSS, JavaScript, Images)
-# https://docs.djangoproject.com/en/6.1/howto/static-files/
+# ==========================================
+# STATIC FILES
+# ==========================================
 
 STATIC_URL = 'static/'
+
+
+# ==========================================
+# DEFAULT PRIMARY KEY
+# ==========================================
+
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
-# Email
-# https://docs.djangoproject.com/en/6.1/topics/email/#topic-email-configuration
+# ==========================================
+# EMAIL CONFIGURATION
+# ==========================================
+#
+# Django 6.1 uses MAILERS.
+#
+# Console backend prints emails directly
+# in the Django terminal.
+#
+# This is useful during development.
+#
 
 MAILERS = {
+
     'default': {
-        'BACKEND': 'django.core.mail.backends.console.EmailBackend',
+
+        'BACKEND':
+            'django.core.mail.backends.console.EmailBackend',
+
     },
+
 }
+
+
+# ==========================================
+# DEFAULT EMAIL ADDRESS
+# ==========================================
+
+DEFAULT_FROM_EMAIL = (
+    'Library Management System '
+    '<noreply@library.local>'
+)
+
+
+# ==========================================
+# FRONTEND URL
+# ==========================================
+
+FRONTEND_URL = (
+    'http://localhost:5173'
+)
+
+
+# ==========================================
+# CUSTOM USER MODEL
+# ==========================================
 
 AUTH_USER_MODEL = 'accounts.User'
 
+
+# ==========================================
+# SIMPLE JWT
+# ==========================================
+
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=30),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
 
-    'ROTATE_REFRESH_TOKENS': True,
-    'BLACKLIST_AFTER_ROTATION': True,
+    'ACCESS_TOKEN_LIFETIME':
+        timedelta(minutes=30),
 
-    'AUTH_HEADER_TYPES': ('Bearer',),
+    'REFRESH_TOKEN_LIFETIME':
+        timedelta(days=7),
+
+    'ROTATE_REFRESH_TOKENS':
+        True,
+
+    'BLACKLIST_AFTER_ROTATION':
+        True,
+
+    'AUTH_HEADER_TYPES':
+        ('Bearer',),
+
 }
