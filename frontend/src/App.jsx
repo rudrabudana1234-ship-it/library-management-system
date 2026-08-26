@@ -7,12 +7,18 @@ import RoleProtectedRoutes from "./components/RoleProtectedRoutes";
 import Home from "./pages/home";
 import Dashboard from "./pages/dashboard";
 import Books from "./pages/books";
-import Authors from "./pages/authors";
 import Members from "./pages/members";
 import Loans from "./pages/loans";
 import Login from "./pages/login";
 import MyLoans from "./pages/myloans";
 import Unauthorised from "./pages/unauthorised";
+import Signup from "./pages/signup";
+import Admin from "./pages/admin";
+
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
+import ChangePassword from "./pages/ChangePassword";
+
 
 function App() {
     return (
@@ -34,6 +40,21 @@ function App() {
                 <Route
                     path="/login"
                     element={<Login />}
+                />
+
+                <Route
+                    path="/signup"
+                    element={<Signup />}
+                />
+
+                <Route
+                    path="/forgot-password"
+                    element={<ForgotPassword />}
+                />
+
+                <Route
+                    path="/reset-password/:uidb64/:token"
+                    element={<ResetPassword />}
                 />
 
                 <Route
@@ -61,22 +82,6 @@ function App() {
                         <ProtectedRoute>
                             <Books />
                         </ProtectedRoute>
-                    }
-                />
-
-                {/* Authors - All authenticated users */}
-                <Route
-                    path="/authors"
-                    element={
-                        <RoleProtectedRoutes
-                            allowedRoles={[
-                                "member",
-                                "librarian",
-                                "admin",
-                            ]}
-                        >
-                            <Authors />
-                        </RoleProtectedRoutes>
                     }
                 />
 
@@ -126,6 +131,31 @@ function App() {
                         >
                             <MyLoans />
                         </RoleProtectedRoutes>
+                    }
+                />
+
+
+                {/* ========================= */}
+                {/* Admin */}
+                {/* ========================= */}
+
+                <Route
+                    path="/admin"
+                    element={
+                        <RoleProtectedRoutes
+                            allowedRoles={["admin"]}
+                        >
+                            <Admin />
+                        </RoleProtectedRoutes>
+                    }
+                />
+
+                <Route
+                    path="/change-password"
+                    element={
+                        <ProtectedRoute>
+                            <ChangePassword />
+                        </ProtectedRoute>
                     }
                 />
 

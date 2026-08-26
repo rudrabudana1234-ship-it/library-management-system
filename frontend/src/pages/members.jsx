@@ -1,61 +1,101 @@
-import { useEffect, useState } from "react";
+import {
+    useEffect,
+    useRef,
+    useState,
+} from "react";
+
 import api from "../services/api";
 import { useAuth } from "../context/authcontext";
 
+
 function Members() {
+
     const { user } = useAuth();
 
-    // =========================
-    // MEMBERS STATE
-    // =========================
+    // =========================================================
+    // MEMBERS
+    // =========================================================
 
     const [members, setMembers] = useState([]);
-    const [error, setError] = useState("");
+
+    const [totalMembers, setTotalMembers] = useState(0);
+
     const [loading, setLoading] = useState(true);
 
-    // =========================
+    const [error, setError] = useState("");
+
+    // =========================================================
     // PAGINATION
-    // =========================
+    // =========================================================
 
     const [nextPage, setNextPage] = useState(null);
+
     const [previousPage, setPreviousPage] = useState(null);
 
-    // =========================
-    // SEARCH + FILTERS
-    // =========================
+    // =========================================================
+    // SEARCH / FILTER / ORDER
+    // =========================================================
 
     const [search, setSearch] = useState("");
+
     const [activeFilter, setActiveFilter] = useState("");
+
     const [ordering, setOrdering] = useState("");
 
-    // =========================
+    const [searchInput, setSearchInput] = useState("");
+
+    const [filtersApplied, setFiltersApplied] =
+        useState(false);
+
+    // =========================================================
     // MODAL
-    // =========================
+    // =========================================================
 
     const [showModal, setShowModal] = useState(false);
-    const [editingMember, setEditingMember] = useState(null);
 
-    // =========================
+    const [editingMember, setEditingMember] =
+        useState(null);
+
+    // =========================================================
     // FORM
-    // =========================
+    // =========================================================
 
     const [userId, setUserId] = useState("");
+
     const [name, setName] = useState("");
+
     const [email, setEmail] = useState("");
+
     const [phone, setPhone] = useState("");
+
     const [address, setAddress] = useState("");
+
     const [isActive, setIsActive] = useState(true);
 
     const [formError, setFormError] = useState("");
+
     const [saving, setSaving] = useState(false);
 
-    // =========================
-    // ROLE PERMISSIONS
-    // =========================
+    // =========================================================
+    // REQUEST CONTROL
+    // =========================================================
 
-    const isAdmin = user?.role === "admin";
-    const isLibrarian = user?.role === "librarian";
-    const isMember = user?.role === "member";
+    const requestIdRef = useRef(0);
+
+    const searchTimeoutRef = useRef(null);
+
+    // =========================================================
+    // ROLE PERMISSIONS
+    // =========================================================
+
+    const isAdmin =
+        user?.role === "admin";
+
+    const isLibrarian =
+        user?.role === "librarian";
+
+    const isMember =
+        user?.role === "member";
 
     const canCreateMembers =
         isAdmin || isLibrarian;
@@ -63,183 +103,400 @@ function Members() {
     const canManageMembers =
         isAdmin || isLibrarian;
 
-    // =========================
+    // =========================================================
     // BUILD QUERY
-    // =========================
+    // =========================================================
 
-    const buildQuery = () => {
-        const params = new URLSearchParams();
+    const buildQuery = (
+        customSearch = search,
+        customActiveFilter = activeFilter,
+        customOrdering = ordering
+    ) => {
 
-        if (search.trim()) {
+        const params =
+            new URLSearchParams();
+
+        const trimmedSearch =
+            customSearch.trim();
+
+        if (trimmedSearch) {
+
             params.append(
                 "search",
-                search.trim()
+                trimmedSearch
             );
         }
 
-        if (activeFilter !== "") {
+        if (
+            customActiveFilter !== ""
+        ) {
+
             params.append(
                 "is_active",
-                activeFilter
+                customActiveFilter
             );
         }
 
-        if (ordering !== "") {
+        if (
+            customOrdering !== ""
+        ) {
+
             params.append(
                 "ordering",
-                ordering
+                customOrdering
             );
         }
 
-        const query = params.toString();
+        const query =
+            params.toString();
 
         return query
             ? `members/?${query}`
             : "members/";
     };
 
-    // =========================
+    // =========================================================
     // FETCH MEMBERS
-    // =========================
+    // =========================================================
 
     const fetchMembers = async (
         url = null
     ) => {
+
+        const currentRequestId =
+            ++requestIdRef.current;
+
         try {
+
             setLoading(true);
+
             setError("");
 
             const requestUrl =
                 url || buildQuery();
 
             const response =
-                await api.get(requestUrl);
+                await api.get(
+                    requestUrl
+                );
 
-            console.log(
-                "MEMBER API RESPONSE:",
-                response.data
-            );
+            // =================================================
+            // IGNORE OLD REQUEST
+            // =================================================
 
-            // Paginated response
             if (
+                currentRequestId !==
+                requestIdRef.current
+            ) {
+                return;
+            }
+
+            const data =
+                response.data;
+
+            // =================================================
+            // PAGINATED RESPONSE
+            // =================================================
+
+            if (
+                data &&
                 Array.isArray(
-                    response.data.results
+                    data.results
                 )
             ) {
+
                 setMembers(
-                    response.data.results
+                    data.results
+                );
+
+                setTotalMembers(
+                    Number(
+                        data.count || 0
+                    )
                 );
 
                 setNextPage(
-                    response.data.next
+                    data.next || null
                 );
 
                 setPreviousPage(
-                    response.data.previous
+                    data.previous || null
                 );
+
+                return;
             }
 
-            // Non-paginated response
-            else if (
-                Array.isArray(response.data)
+            // =================================================
+            // NON-PAGINATED RESPONSE
+            // =================================================
+
+            if (
+                Array.isArray(data)
             ) {
-                setMembers(
-                    response.data
+
+                setMembers(data);
+
+                setTotalMembers(
+                    data.length
                 );
 
                 setNextPage(null);
+
                 setPreviousPage(null);
+
+                return;
             }
 
-            // Unexpected response
-            else {
-                setMembers([]);
-                setNextPage(null);
-                setPreviousPage(null);
-            }
-
-        } catch (error) {
-            console.error(
-                "MEMBER API ERROR:",
-                error.response?.data ||
-                error.message
-            );
-
-            setError(
-                JSON.stringify(
-                    error.response?.data ||
-                    error.message,
-                    null,
-                    2
-                )
-            );
+            // =================================================
+            // INVALID RESPONSE
+            // =================================================
 
             setMembers([]);
 
+            setTotalMembers(0);
+
+            setNextPage(null);
+
+            setPreviousPage(null);
+
+        } catch (requestError) {
+
+            if (
+                currentRequestId !==
+                requestIdRef.current
+            ) {
+                return;
+            }
+
+            console.error(
+                "MEMBER API ERROR:",
+                requestError.response?.data ||
+                requestError.message
+            );
+
+            const apiError =
+                requestError.response?.data;
+
+            if (
+                typeof apiError ===
+                "object"
+            ) {
+
+                setError(
+                    JSON.stringify(
+                        apiError,
+                        null,
+                        2
+                    )
+                );
+
+            } else {
+
+                setError(
+                    apiError ||
+                    requestError.message ||
+                    "Unable to load members."
+                );
+            }
+
+            setMembers([]);
+
+            setTotalMembers(0);
+
+            setNextPage(null);
+
+            setPreviousPage(null);
+
         } finally {
-            setLoading(false);
+
+            if (
+                currentRequestId ===
+                requestIdRef.current
+            ) {
+
+                setLoading(false);
+            }
         }
     };
 
-    // =========================
+    // =========================================================
     // INITIAL LOAD
-    // =========================
+    // =========================================================
 
     useEffect(() => {
+
         fetchMembers();
+
+        return () => {
+
+            if (
+                searchTimeoutRef.current
+            ) {
+
+                clearTimeout(
+                    searchTimeoutRef.current
+                );
+            }
+        };
+
     }, []);
 
-    // =========================
+    // =========================================================
+    // SEARCH INPUT
+    // =========================================================
+
+    const handleSearchChange = (
+        event
+    ) => {
+
+        const value =
+            event.target.value;
+
+        setSearchInput(value);
+
+        // -----------------------------------------------------
+        // Debounced search
+        // -----------------------------------------------------
+
+        if (
+            searchTimeoutRef.current
+        ) {
+
+            clearTimeout(
+                searchTimeoutRef.current
+            );
+        }
+
+        searchTimeoutRef.current =
+            setTimeout(() => {
+
+                const trimmedValue =
+                    value.trim();
+
+                setSearch(
+                    trimmedValue
+                );
+
+            }, 450);
+    };
+
+    // =========================================================
+    // SEARCH / FILTER / ORDER EFFECT
+    // =========================================================
+
+    useEffect(() => {
+
+        if (!filtersApplied) {
+            return;
+        }
+
+        fetchMembers(
+            buildQuery(
+                search,
+                activeFilter,
+                ordering
+            )
+        );
+
+    }, [
+        search,
+        activeFilter,
+        ordering,
+        filtersApplied,
+    ]);
+
+    // =========================================================
     // APPLY FILTERS
-    // =========================
+    // =========================================================
 
     const handleApplyFilters = (
         event
     ) => {
+
         event.preventDefault();
 
+        if (
+            searchTimeoutRef.current
+        ) {
+
+            clearTimeout(
+                searchTimeoutRef.current
+            );
+        }
+
+        const trimmedSearch =
+            searchInput.trim();
+
+        setSearch(
+            trimmedSearch
+        );
+
+        setFiltersApplied(true);
+    };
+
+    // =========================================================
+    // CLEAR FILTERS
+    // =========================================================
+
+    const handleClearFilters = () => {
+
+        if (
+            searchTimeoutRef.current
+        ) {
+
+            clearTimeout(
+                searchTimeoutRef.current
+            );
+        }
+
+        setSearchInput("");
+
+        setSearch("");
+
+        setActiveFilter("");
+
+        setOrdering("");
+
+        setFiltersApplied(false);
+
         fetchMembers(
-            buildQuery()
+            "members/"
         );
     };
 
-    // =========================
-    // CLEAR FILTERS
-    // =========================
-
-    const handleClearFilters = () => {
-        setSearch("");
-        setActiveFilter("");
-        setOrdering("");
-
-        fetchMembers("members/");
-    };
-
-    // =========================
-    // OPEN ADD MODAL
-    // =========================
+    // =========================================================
+    // ADD MEMBER
+    // =========================================================
 
     const handleAddMember = () => {
+
         setEditingMember(null);
 
         setUserId("");
+
         setName("");
+
         setEmail("");
+
         setPhone("");
+
         setAddress("");
+
         setIsActive(true);
 
         setFormError("");
+
         setShowModal(true);
     };
 
-    // =========================
-    // OPEN EDIT MODAL
-    // =========================
+    // =========================================================
+    // EDIT MEMBER
+    // =========================================================
 
     const handleEditMember = (
         member
     ) => {
+
         setEditingMember(member);
 
         setUserId(
@@ -267,53 +524,79 @@ function Members() {
         );
 
         setFormError("");
+
         setShowModal(true);
     };
 
-    // =========================
-    // CLOSE MODAL
-    // =========================
+    // =========================================================
+    // RESET FORM
+    // =========================================================
 
-    const closeModal = () => {
-        if (saving) {
-            return;
-        }
+    const resetForm = () => {
 
-        setShowModal(false);
         setEditingMember(null);
 
         setUserId("");
+
         setName("");
+
         setEmail("");
+
         setPhone("");
+
         setAddress("");
+
         setIsActive(true);
 
         setFormError("");
     };
 
-    // =========================
+    // =========================================================
+    // CLOSE MODAL
+    // =========================================================
+
+    const closeModal = () => {
+
+        if (saving) {
+            return;
+        }
+
+        setShowModal(false);
+
+        resetForm();
+    };
+
+    // =========================================================
     // SUBMIT MEMBER
-    // =========================
+    // =========================================================
 
     const handleSubmit = async (
         event
     ) => {
+
         event.preventDefault();
 
         setFormError("");
 
+        // =====================================================
+        // BASIC VALIDATION
+        // =====================================================
+
         if (!name.trim()) {
+
             setFormError(
                 "Member name is required."
             );
+
             return;
         }
 
         if (!email.trim()) {
+
             setFormError(
                 "Email is required."
             );
+
             return;
         }
 
@@ -321,85 +604,164 @@ function Members() {
             !editingMember &&
             !userId
         ) {
+
             setFormError(
                 "User ID is required when creating a member."
             );
+
             return;
         }
 
+        // =====================================================
+        // EMAIL VALIDATION
+        // =====================================================
+
+        const emailPattern =
+            /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+        if (
+            !emailPattern.test(
+                email.trim()
+            )
+        ) {
+
+            setFormError(
+                "Please enter a valid email address."
+            );
+
+            return;
+        }
+
+        // =====================================================
+        // USER ID VALIDATION
+        // =====================================================
+
+        if (!editingMember) {
+
+            const numericUserId =
+                Number(userId);
+
+            if (
+                !Number.isInteger(
+                    numericUserId
+                ) ||
+                numericUserId <= 0
+            ) {
+
+                setFormError(
+                    "User ID must be a valid positive number."
+                );
+
+                return;
+            }
+        }
+
         try {
+
             setSaving(true);
 
             const memberData = {
-                name: name.trim(),
-                email: email.trim(),
-                phone: phone.trim(),
-                address: address.trim(),
-                is_active: isActive,
+
+                name:
+                    name.trim(),
+
+                email:
+                    email.trim(),
+
+                phone:
+                    phone.trim(),
+
+                address:
+                    address.trim(),
+
+                is_active:
+                    isActive,
             };
 
-            // User ID only during creation
+            // =================================================
+            // CREATE
+            // =================================================
+
             if (!editingMember) {
+
                 memberData.user_id =
                     Number(userId);
-            }
 
-            // UPDATE
-            if (editingMember) {
-                await api.put(
-                    `members/${editingMember.id}/`,
-                    memberData
-                );
-            }
-
-            // CREATE
-            else {
                 await api.post(
                     "members/",
                     memberData
                 );
             }
 
-            setShowModal(false);
-            setEditingMember(null);
+            // =================================================
+            // UPDATE
+            // =================================================
 
-            setUserId("");
-            setName("");
-            setEmail("");
-            setPhone("");
-            setAddress("");
-            setIsActive(true);
+            else {
+
+                await api.patch(
+                    `members/${editingMember.id}/`,
+                    memberData
+                );
+            }
+
+            // =================================================
+            // SUCCESS
+            // =================================================
+
+            setShowModal(false);
+
+            resetForm();
 
             await fetchMembers();
 
-        } catch (error) {
+        } catch (requestError) {
+
             console.error(
                 "SAVE MEMBER ERROR:",
-                error.response?.data ||
-                error.message
+                requestError.response?.data ||
+                requestError.message
             );
 
-            setFormError(
-                JSON.stringify(
-                    error.response?.data ||
-                    error.message,
-                    null,
-                    2
-                )
-            );
+            const apiError =
+                requestError.response?.data;
+
+            if (
+                typeof apiError ===
+                "object"
+            ) {
+
+                setFormError(
+                    JSON.stringify(
+                        apiError,
+                        null,
+                        2
+                    )
+                );
+
+            } else {
+
+                setFormError(
+                    apiError ||
+                    requestError.message ||
+                    "Unable to save member."
+                );
+            }
 
         } finally {
+
             setSaving(false);
         }
     };
 
-    // =========================
+    // =========================================================
     // DELETE MEMBER
-    // =========================
+    // =========================================================
 
     const handleDeleteMember = async (
         member
     ) => {
+
         const confirmed =
             window.confirm(
                 `Are you sure you want to delete "${member.name}"?`
@@ -410,7 +772,10 @@ function Members() {
         }
 
         try {
+
             setError("");
+
+            setLoading(true);
 
             await api.delete(
                 `members/${member.id}/`
@@ -418,71 +783,149 @@ function Members() {
 
             await fetchMembers();
 
-        } catch (error) {
+        } catch (requestError) {
+
             console.error(
                 "DELETE MEMBER ERROR:",
-                error.response?.data ||
-                error.message
+                requestError.response?.data ||
+                requestError.message
             );
 
-            setError(
-                JSON.stringify(
-                    error.response?.data ||
-                    error.message,
-                    null,
-                    2
-                )
+            const apiError =
+                requestError.response?.data;
+
+            if (
+                typeof apiError ===
+                "object"
+            ) {
+
+                setError(
+                    JSON.stringify(
+                        apiError,
+                        null,
+                        2
+                    )
+                );
+
+            } else {
+
+                setError(
+                    apiError ||
+                    requestError.message ||
+                    "Unable to delete member."
+                );
+            }
+
+            setLoading(false);
+        }
+    };
+
+    // =========================================================
+    // PAGE NAVIGATION
+    // =========================================================
+
+    const handleNextPage = () => {
+
+        if (
+            nextPage &&
+            !loading
+        ) {
+
+            fetchMembers(
+                nextPage
             );
         }
     };
 
-    // =========================
+    const handlePreviousPage = () => {
+
+        if (
+            previousPage &&
+            !loading
+        ) {
+
+            fetchMembers(
+                previousPage
+            );
+        }
+    };
+
+    // =========================================================
+    // ACTIVE FILTER LABEL
+    // =========================================================
+
+    const getStatusLabel = () => {
+
+        if (
+            activeFilter === "true"
+        ) {
+            return "Active";
+        }
+
+        if (
+            activeFilter === "false"
+        ) {
+            return "Inactive";
+        }
+
+        return "All";
+    };
+
+    // =========================================================
     // UI
-    // =========================
+    // =========================================================
 
     return (
-        <div className="container py-4">
 
-            {/* =========================
-                PAGE HEADER
-            ========================== */}
+        <div className="container-fluid py-4">
 
-            <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
+            {/* =================================================
+                HEADER
+            ================================================= */}
+
+            <div className="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 mb-4">
 
                 <div>
-                    <h1 className="fw-bold mb-1">
-                        👥 Members
-                    </h1>
+
+                    <div className="d-flex align-items-center gap-2 mb-1">
+
+                        <h1 className="fw-bold mb-0">
+                            👥 Members
+                        </h1>
+
+                        <span className="badge bg-primary">
+                            {totalMembers}
+                        </span>
+
+                    </div>
 
                     <p className="text-muted mb-0">
-                        Search, filter and manage library members.
+                        Search, filter, sort and manage library members.
                     </p>
-                </div>
-
-                <div className="d-flex align-items-center gap-2">
-
-                    <span className="badge bg-primary fs-6">
-                        {members.length} Members
-                    </span>
-
-                    {canCreateMembers && (
-                        <button
-                            className="btn btn-primary"
-                            onClick={
-                                handleAddMember
-                            }
-                        >
-                            + Add Member
-                        </button>
-                    )}
 
                 </div>
+
+                {canCreateMembers && (
+
+                    <button
+                        className="btn btn-primary px-4"
+                        onClick={
+                            handleAddMember
+                        }
+                    >
+                        <span className="me-1">
+                            +
+                        </span>
+                        Add Member
+                    </button>
+
+                )}
 
             </div>
 
-            {/* =========================
-                SEARCH + FILTERS
-            ========================== */}
+            {/* =================================================
+                SEARCH / FILTER CARD
+            ================================================= */}
 
             <div className="card border-0 shadow-sm mb-4">
 
@@ -494,35 +937,58 @@ function Members() {
                         }
                     >
 
-                        <div className="row g-3">
+                        <div className="row g-3 align-items-end">
 
                             {/* SEARCH */}
 
-                            <div className="col-lg-5">
+                            <div className="col-12 col-xl-5">
 
                                 <label className="form-label fw-semibold">
-                                    Search
+                                    Search Members
                                 </label>
 
-                                <input
-                                    type="text"
-                                    className="form-control"
-                                    placeholder="Name, email or phone..."
-                                    value={search}
-                                    onChange={(
-                                        event
-                                    ) =>
-                                        setSearch(
-                                            event.target.value
-                                        )
-                                    }
-                                />
+                                <div className="input-group">
+
+                                    <span className="input-group-text">
+                                        🔍
+                                    </span>
+
+                                    <input
+                                        type="text"
+                                        className="form-control"
+                                        value={searchInput}
+                                        onChange={
+                                            handleSearchChange
+                                        }
+                                        placeholder="Search by name, email or phone..."
+                                    />
+
+                                    {searchInput && (
+
+                                        <button
+                                            type="button"
+                                            className="btn btn-outline-secondary"
+                                            onClick={() => {
+                                                setSearchInput("");
+                                                setSearch("");
+                                            }}
+                                        >
+                                            ✕
+                                        </button>
+
+                                    )}
+
+                                </div>
+
+                                <small className="text-muted">
+                                    Search works across member name, email and phone.
+                                </small>
 
                             </div>
 
                             {/* STATUS */}
 
-                            <div className="col-md-4 col-lg-3">
+                            <div className="col-12 col-md-4 col-xl-2">
 
                                 <label className="form-label fw-semibold">
                                     Status
@@ -531,9 +997,7 @@ function Members() {
                                 <select
                                     className="form-select"
                                     value={activeFilter}
-                                    onChange={(
-                                        event
-                                    ) =>
+                                    onChange={(event) =>
                                         setActiveFilter(
                                             event.target.value
                                         )
@@ -556,9 +1020,9 @@ function Members() {
 
                             </div>
 
-                            {/* ORDERING */}
+                            {/* SORT */}
 
-                            <div className="col-md-4 col-lg-2">
+                            <div className="col-12 col-md-4 col-xl-2">
 
                                 <label className="form-label fw-semibold">
                                     Sort By
@@ -567,9 +1031,7 @@ function Members() {
                                 <select
                                     className="form-select"
                                     value={ordering}
-                                    onChange={(
-                                        event
-                                    ) =>
+                                    onChange={(event) =>
                                         setOrdering(
                                             event.target.value
                                         )
@@ -610,26 +1072,32 @@ function Members() {
 
                             {/* BUTTONS */}
 
-                            <div className="col-md-4 col-lg-2 d-flex align-items-end gap-2">
+                            <div className="col-12 col-md-4 col-xl-3">
 
-                                <button
-                                    type="submit"
-                                    className="btn btn-primary flex-grow-1"
-                                    disabled={loading}
-                                >
-                                    🔍 Apply
-                                </button>
+                                <div className="d-flex gap-2">
 
-                                <button
-                                    type="button"
-                                    className="btn btn-outline-secondary"
-                                    onClick={
-                                        handleClearFilters
-                                    }
-                                    disabled={loading}
-                                >
-                                    Clear
-                                </button>
+                                    <button
+                                        type="submit"
+                                        className="btn btn-primary flex-grow-1"
+                                        disabled={loading}
+                                    >
+                                        🔍 Search
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        className="btn btn-outline-secondary"
+                                        onClick={
+                                            handleClearFilters
+                                        }
+                                        disabled={
+                                            loading
+                                        }
+                                    >
+                                        Clear
+                                    </button>
+
+                                </div>
 
                             </div>
 
@@ -641,62 +1109,146 @@ function Members() {
 
             </div>
 
-            {/* =========================
+            {/* =================================================
+                ACTIVE FILTER SUMMARY
+            ================================================= */}
+
+            {(search ||
+                activeFilter ||
+                ordering) && (
+
+                <div className="d-flex flex-wrap align-items-center gap-2 mb-3">
+
+                    <span className="text-muted small">
+                        Active filters:
+                    </span>
+
+                    {search && (
+
+                        <span className="badge bg-light text-dark border">
+                            🔍 {search}
+                        </span>
+
+                    )}
+
+                    {activeFilter && (
+
+                        <span className="badge bg-light text-dark border">
+                            Status: {getStatusLabel()}
+                        </span>
+
+                    )}
+
+                    {ordering && (
+
+                        <span className="badge bg-light text-dark border">
+
+                            Sort:{" "}
+
+                            {ordering === "name"
+                                ? "Name A-Z"
+                                : ordering === "-name"
+                                    ? "Name Z-A"
+                                    : ordering === "email"
+                                        ? "Email A-Z"
+                                        : ordering === "-email"
+                                            ? "Email Z-A"
+                                            : ordering === "joined_date"
+                                                ? "Oldest Joined"
+                                                : ordering === "-joined_date"
+                                                    ? "Newest Joined"
+                                                    : ordering}
+
+                        </span>
+
+                    )}
+
+                </div>
+
+            )}
+
+            {/* =================================================
                 ERROR
-            ========================== */}
+            ================================================= */}
 
             {error && (
+
                 <div
-                    className="alert alert-danger"
+                    className="alert alert-danger border-0 shadow-sm"
                     role="alert"
                 >
 
-                    <h6 className="fw-bold">
-                        Unable to complete request
-                    </h6>
+                    <div className="d-flex justify-content-between align-items-start gap-3">
 
-                    <pre className="mb-0 text-danger">
-                        {error}
-                    </pre>
+                        <div>
 
-                    <button
-                        className="btn btn-outline-danger btn-sm mt-3"
-                        onClick={() =>
-                            fetchMembers()
-                        }
-                    >
-                        🔄 Try Again
-                    </button>
+                            <h6 className="fw-bold mb-2">
+                                ⚠️ Unable to complete request
+                            </h6>
 
-                </div>
-            )}
+                            <pre
+                                className="mb-0 text-danger"
+                                style={{
+                                    whiteSpace:
+                                        "pre-wrap",
+                                    wordBreak:
+                                        "break-word",
+                                }}
+                            >
+                                {error}
+                            </pre>
 
-            {/* =========================
-                LOADING
-            ========================== */}
+                        </div>
 
-            {loading && (
-                <div className="text-center py-5">
+                        <button
+                            className="btn btn-outline-danger btn-sm"
+                            onClick={() =>
+                                fetchMembers()
+                            }
+                        >
+                            🔄 Retry
+                        </button>
 
-                    <div
-                        className="spinner-border text-primary"
-                        role="status"
-                    >
-                        <span className="visually-hidden">
-                            Loading...
-                        </span>
                     </div>
 
-                    <p className="text-muted mt-3 mb-0">
-                        Loading members...
-                    </p>
-
                 </div>
+
             )}
 
-            {/* =========================
+            {/* =================================================
+                LOADING
+            ================================================= */}
+
+            {loading && (
+
+                <div className="card border-0 shadow-sm">
+
+                    <div className="card-body text-center py-5">
+
+                        <div
+                            className="spinner-border text-primary"
+                            role="status"
+                        >
+
+                            <span className="visually-hidden">
+                                Loading...
+                            </span>
+
+                        </div>
+
+                        <p className="text-muted mt-3 mb-0">
+                            Loading members...
+                        </p>
+
+                    </div>
+
+                </div>
+
+            )}
+
+            {/* =================================================
                 EMPTY STATE
-            ========================== */}
+            ================================================= */}
 
             {!loading &&
                 !error &&
@@ -706,17 +1258,16 @@ function Members() {
 
                         <div className="card-body text-center py-5">
 
-                            <div className="fs-1 mb-3">
+                            <div className="display-4 mb-3">
                                 👥
                             </div>
 
-                            <h5 className="fw-bold">
+                            <h4 className="fw-bold">
                                 No members found
-                            </h5>
+                            </h4>
 
-                            <p className="text-muted mb-3">
-                                Try changing your search
-                                or filters.
+                            <p className="text-muted mb-4">
+                                No members match your current search or filters.
                             </p>
 
                             <button
@@ -731,441 +1282,718 @@ function Members() {
                         </div>
 
                     </div>
+
                 )}
 
-            {/* =========================
+            {/* =================================================
                 MEMBERS TABLE
-            ========================== */}
+            ================================================= */}
 
             {!loading &&
                 !error &&
                 members.length > 0 && (
 
-                    <>
+                    <div className="card border-0 shadow-sm">
 
-                        <div className="card border-0 shadow-sm">
+                        {/* =================================================
+                            TABLE HEADER
+                        ================================================= */}
 
-                            <div className="card-header bg-white py-3">
+                        <div className="card-header bg-white border-0 py-3">
 
-                                <div className="d-flex justify-content-between align-items-center">
+                            <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
 
-                                    <h5 className="fw-bold mb-0">
+                                <div>
+
+                                    <h5 className="fw-bold mb-1">
                                         Members List
                                     </h5>
 
-                                    <span className="badge bg-primary">
-                                        {members.length} Members
-                                    </span>
+                                    <small className="text-muted">
 
-                                </div>
+                                        Showing{" "}
 
-                            </div>
+                                        <strong>
+                                            {members.length}
+                                        </strong>{" "}
 
-                            <div className="card-body p-0">
+                                        member
+                                        {members.length !== 1
+                                            ? "s"
+                                            : ""}
 
-                                <div className="table-responsive">
-
-                                    <table className="table table-hover align-middle mb-0">
-
-                                        <thead className="table-dark">
-
-                                            <tr>
-
-                                                <th>#</th>
-
-                                                <th>Name</th>
-
-                                                <th>Email</th>
-
-                                                <th>Phone</th>
-
-                                                <th>Address</th>
-
-                                                <th>Status</th>
-
-                                                {canManageMembers && (
-                                                    <th>
-                                                        Actions
-                                                    </th>
-                                                )}
-
-                                            </tr>
-
-                                        </thead>
-
-                                        <tbody>
-
-                                            {members.map(
-                                                (
-                                                    member,
-                                                    index
-                                                ) => (
-
-                                                    <tr
-                                                        key={
-                                                            member.id
+                                        {totalMembers >
+                                            members.length &&
+                                            (
+                                                <>
+                                                    {" "}of{" "}
+                                                    <strong>
+                                                        {
+                                                            totalMembers
                                                         }
-                                                    >
-
-                                                        <td className="text-muted">
-                                                            {index + 1}
-                                                        </td>
-
-                                                        <td>
-                                                            <span className="fw-semibold">
-                                                                {
-                                                                    member.name
-                                                                }
-                                                            </span>
-                                                        </td>
-
-                                                        <td>
-                                                            {
-                                                                member.email
-                                                            }
-                                                        </td>
-
-                                                        <td>
-                                                            {
-                                                                member.phone ||
-                                                                "—"
-                                                            }
-                                                        </td>
-
-                                                        <td>
-                                                            {
-                                                                member.address ||
-                                                                "—"
-                                                            }
-                                                        </td>
-
-                                                        <td>
-
-                                                            {member.is_active ? (
-                                                                <span className="badge bg-success">
-                                                                    Active
-                                                                </span>
-                                                            ) : (
-                                                                <span className="badge bg-secondary">
-                                                                    Inactive
-                                                                </span>
-                                                            )}
-
-                                                        </td>
-
-                                                        {canManageMembers && (
-                                                            <td>
-
-                                                                <div className="d-flex gap-2">
-
-                                                                    <button
-                                                                        className="btn btn-sm btn-outline-primary"
-                                                                        onClick={() =>
-                                                                            handleEditMember(
-                                                                                member
-                                                                            )
-                                                                        }
-                                                                    >
-                                                                        ✏️ Edit
-                                                                    </button>
-
-                                                                    {isAdmin && (
-                                                                        <button
-                                                                            className="btn btn-sm btn-outline-danger"
-                                                                            onClick={() =>
-                                                                                handleDeleteMember(
-                                                                                    member
-                                                                                )
-                                                                            }
-                                                                        >
-                                                                            🗑️ Delete
-                                                                        </button>
-                                                                    )}
-
-                                                                </div>
-
-                                                            </td>
-                                                        )}
-
-                                                    </tr>
-
-                                                )
+                                                    </strong>
+                                                </>
                                             )}
 
-                                        </tbody>
-
-                                    </table>
+                                    </small>
 
                                 </div>
+
+                                <span className="badge bg-primary align-self-start align-self-md-center">
+                                    {totalMembers} Total
+                                </span>
 
                             </div>
 
                         </div>
 
-                        {/* =========================
+                        {/* =================================================
+                            TABLE
+                        ================================================= */}
+
+                        <div className="card-body p-0">
+
+                            <div className="table-responsive">
+
+                                <table className="table table-hover align-middle mb-0">
+
+                                    <thead className="table-dark">
+
+                                        <tr>
+
+                                            <th
+                                                className="px-3"
+                                                style={{
+                                                    width:
+                                                        "70px",
+                                                }}
+                                            >
+                                                #
+                                            </th>
+
+                                            <th>
+                                                Member
+                                            </th>
+
+                                            <th>
+                                                Email
+                                            </th>
+
+                                            <th>
+                                                Phone
+                                            </th>
+
+                                            <th>
+                                                Address
+                                            </th>
+
+                                            <th>
+                                                Joined
+                                            </th>
+
+                                            <th>
+                                                Status
+                                            </th>
+
+                                            {canManageMembers && (
+
+                                                <th>
+                                                    Actions
+                                                </th>
+
+                                            )}
+
+                                        </tr>
+
+                                    </thead>
+
+                                    <tbody>
+
+                                        {members.map(
+                                            (
+                                                member,
+                                                index
+                                            ) => (
+
+                                                <tr
+                                                    key={
+                                                        member.id
+                                                    }
+                                                >
+
+                                                    {/* NUMBER */}
+
+                                                    <td className="px-3 text-muted fw-semibold">
+
+                                                        {index + 1}
+
+                                                    </td>
+
+                                                    {/* MEMBER */}
+
+                                                    <td>
+
+                                                        <div className="d-flex align-items-center gap-3">
+
+                                                            <div
+                                                                className="rounded-circle bg-primary-subtle text-primary d-flex align-items-center justify-content-center fw-bold"
+                                                                style={{
+                                                                    width:
+                                                                        "42px",
+                                                                    height:
+                                                                        "42px",
+                                                                }}
+                                                            >
+                                                                {member.name
+                                                                    ?.charAt(
+                                                                        0
+                                                                    )
+                                                                    ?.toUpperCase() ||
+                                                                    "?"}
+                                                            </div>
+
+                                                            <div>
+
+                                                                <div className="fw-semibold">
+                                                                    {
+                                                                        member.name
+                                                                    }
+                                                                </div>
+
+                                                                {member.user_id && (
+
+                                                                    <small className="text-muted">
+                                                                        User ID:{" "}
+                                                                        {
+                                                                            member.user_id
+                                                                        }
+                                                                    </small>
+
+                                                                )}
+
+                                                            </div>
+
+                                                        </div>
+
+                                                    </td>
+
+                                                    {/* EMAIL */}
+
+                                                    <td>
+
+                                                        <span>
+                                                            {
+                                                                member.email
+                                                            }
+                                                        </span>
+
+                                                    </td>
+
+                                                    {/* PHONE */}
+
+                                                    <td>
+
+                                                        {member.phone ? (
+
+                                                            member.phone
+
+                                                        ) : (
+
+                                                            <span className="text-muted">
+                                                                —
+                                                            </span>
+
+                                                        )}
+
+                                                    </td>
+
+                                                    {/* ADDRESS */}
+
+                                                    <td
+                                                        style={{
+                                                            minWidth:
+                                                                "180px",
+                                                            maxWidth:
+                                                                "280px",
+                                                        }}
+                                                    >
+
+                                                        {member.address ? (
+
+                                                            <span
+                                                                title={
+                                                                    member.address
+                                                                }
+                                                            >
+
+                                                                {member.address.length >
+                                                                70
+                                                                    ? `${member.address.slice(
+                                                                        0,
+                                                                        70
+                                                                    )}...`
+                                                                    : member.address}
+
+                                                            </span>
+
+                                                        ) : (
+
+                                                            <span className="text-muted">
+                                                                —
+                                                            </span>
+
+                                                        )}
+
+                                                    </td>
+
+                                                    {/* JOINED */}
+
+                                                    <td>
+
+                                                        {member.joined_date ? (
+
+                                                            new Date(
+                                                                member.joined_date
+                                                            ).toLocaleDateString()
+
+                                                        ) : (
+
+                                                            <span className="text-muted">
+                                                                —
+                                                            </span>
+
+                                                        )}
+
+                                                    </td>
+
+                                                    {/* STATUS */}
+
+                                                    <td>
+
+                                                        {member.is_active ? (
+
+                                                            <span className="badge bg-success-subtle text-success border border-success-subtle">
+                                                                ● Active
+                                                            </span>
+
+                                                        ) : (
+
+                                                            <span className="badge bg-secondary-subtle text-secondary border border-secondary-subtle">
+                                                                ● Inactive
+                                                            </span>
+
+                                                        )}
+
+                                                    </td>
+
+                                                    {/* ACTIONS */}
+
+                                                    {canManageMembers && (
+
+                                                        <td>
+
+                                                            <div className="d-flex flex-wrap gap-2">
+
+                                                                <button
+                                                                    className="btn btn-sm btn-outline-primary"
+                                                                    onClick={() =>
+                                                                        handleEditMember(
+                                                                            member
+                                                                        )
+                                                                    }
+                                                                >
+                                                                    ✏️ Edit
+                                                                </button>
+
+                                                                {isAdmin && (
+
+                                                                    <button
+                                                                        className="btn btn-sm btn-outline-danger"
+                                                                        onClick={() =>
+                                                                            handleDeleteMember(
+                                                                                member
+                                                                            )
+                                                                        }
+                                                                    >
+                                                                        🗑️ Delete
+                                                                    </button>
+
+                                                                )}
+
+                                                            </div>
+
+                                                        </td>
+
+                                                    )}
+
+                                                </tr>
+
+                                            )
+                                        )}
+
+                                    </tbody>
+
+                                </table>
+
+                            </div>
+
+                        </div>
+
+                        {/* =================================================
                             PAGINATION
-                        ========================== */}
+                        ================================================= */}
 
                         {(previousPage ||
                             nextPage) && (
 
-                            <div className="d-flex justify-content-between align-items-center mt-4">
+                            <div className="card-footer bg-white border-0 py-3">
 
-                                <button
-                                    className="btn btn-outline-primary"
-                                    disabled={
-                                        !previousPage ||
-                                        loading
-                                    }
-                                    onClick={() =>
-                                        fetchMembers(
-                                            previousPage
-                                        )
-                                    }
-                                >
-                                    ← Previous
-                                </button>
+                                <div className="d-flex flex-column flex-md-row justify-content-between align-items-center gap-3">
 
-                                <span className="text-muted">
-                                    Page navigation
-                                </span>
+                                    <button
+                                        className="btn btn-outline-primary"
+                                        disabled={
+                                            !previousPage ||
+                                            loading
+                                        }
+                                        onClick={
+                                            handlePreviousPage
+                                        }
+                                    >
+                                        ← Previous
+                                    </button>
 
-                                <button
-                                    className="btn btn-outline-primary"
-                                    disabled={
-                                        !nextPage ||
-                                        loading
-                                    }
-                                    onClick={() =>
-                                        fetchMembers(
-                                            nextPage
-                                        )
-                                    }
-                                >
-                                    Next →
-                                </button>
+                                    <div className="text-center">
+
+                                        <div className="fw-semibold">
+                                            Members
+                                        </div>
+
+                                        <small className="text-muted">
+                                            Use the buttons to navigate pages
+                                        </small>
+
+                                    </div>
+
+                                    <button
+                                        className="btn btn-outline-primary"
+                                        disabled={
+                                            !nextPage ||
+                                            loading
+                                        }
+                                        onClick={
+                                            handleNextPage
+                                        }
+                                    >
+                                        Next →
+                                    </button>
+
+                                </div>
 
                             </div>
+
                         )}
 
-                    </>
+                    </div>
+
                 )}
 
-            {/* =========================
+            {/* =================================================
                 ADD / EDIT MODAL
-            ========================== */}
+            ================================================= */}
 
             {showModal && (
 
-                <div
-                    className="modal fade show d-block"
-                    tabIndex="-1"
-                    role="dialog"
-                >
+                <>
 
-                    <div className="modal-dialog modal-lg modal-dialog-centered">
+                    <div
+                        className="modal fade show d-block"
+                        tabIndex="-1"
+                        role="dialog"
+                        aria-modal="true"
+                    >
 
-                        <div className="modal-content">
+                        <div className="modal-dialog modal-lg modal-dialog-centered">
 
-                            <div className="modal-header">
+                            <div className="modal-content border-0 shadow-lg">
 
-                                <h5 className="modal-title fw-bold">
-                                    {editingMember
-                                        ? "✏️ Edit Member"
-                                        : "👤 Add Member"}
-                                </h5>
+                                {/* HEADER */}
 
-                                <button
-                                    type="button"
-                                    className="btn-close"
-                                    onClick={
-                                        closeModal
+                                <div className="modal-header">
+
+                                    <div>
+
+                                        <h5 className="modal-title fw-bold mb-1">
+
+                                            {editingMember
+                                                ? "✏️ Edit Member"
+                                                : "👤 Add Member"}
+
+                                        </h5>
+
+                                        <small className="text-muted">
+
+                                            {editingMember
+                                                ? "Update member information."
+                                                : "Create a member profile for an existing member-role user."}
+
+                                        </small>
+
+                                    </div>
+
+                                    <button
+                                        type="button"
+                                        className="btn-close"
+                                        onClick={
+                                            closeModal
+                                        }
+                                        disabled={
+                                            saving
+                                        }
+                                    ></button>
+
+                                </div>
+
+                                {/* FORM */}
+
+                                <form
+                                    onSubmit={
+                                        handleSubmit
                                     }
-                                    disabled={saving}
-                                ></button>
+                                >
 
-                            </div>
+                                    <div className="modal-body">
 
-                            <form
-                                onSubmit={
-                                    handleSubmit
-                                }
-                            >
+                                        {/* FORM ERROR */}
 
-                                <div className="modal-body">
+                                        {formError && (
 
-                                    {formError && (
-                                        <div className="alert alert-danger">
+                                            <div className="alert alert-danger">
 
-                                            <pre className="mb-0">
-                                                {
-                                                    formError
+                                                <div className="fw-semibold mb-1">
+                                                    Please fix the following:
+                                                </div>
+
+                                                <pre
+                                                    className="mb-0"
+                                                    style={{
+                                                        whiteSpace:
+                                                            "pre-wrap",
+                                                        wordBreak:
+                                                            "break-word",
+                                                    }}
+                                                >
+                                                    {
+                                                        formError
+                                                    }
+                                                </pre>
+
+                                            </div>
+
+                                        )}
+
+                                        <div className="row g-3">
+
+                                            {/* USER ID */}
+
+                                            {!editingMember && (
+
+                                                <div className="col-md-6">
+
+                                                    <label className="form-label fw-semibold">
+                                                        User ID
+                                                    </label>
+
+                                                    <input
+                                                        type="number"
+                                                        className="form-control"
+                                                        value={
+                                                            userId
+                                                        }
+                                                        onChange={(
+                                                            event
+                                                        ) =>
+                                                            setUserId(
+                                                                event.target.value
+                                                            )
+                                                        }
+                                                        placeholder="Enter existing user ID"
+                                                        min="1"
+                                                        disabled={
+                                                            saving
+                                                        }
+                                                    />
+
+                                                    <div className="form-text">
+                                                        The user must already exist with the member role.
+                                                    </div>
+
+                                                </div>
+
+                                            )}
+
+                                            {/* NAME */}
+
+                                            <div
+                                                className={
+                                                    editingMember
+                                                        ? "col-md-6"
+                                                        : "col-md-6"
                                                 }
-                                            </pre>
-
-                                        </div>
-                                    )}
-
-                                    <div className="row g-3">
-
-                                        {/* USER ID */}
-
-                                        {!editingMember && (
-                                            <div className="col-md-6">
+                                            >
 
                                                 <label className="form-label fw-semibold">
-                                                    User ID
+                                                    Member Name
                                                 </label>
 
                                                 <input
-                                                    type="number"
+                                                    type="text"
                                                     className="form-control"
-                                                    value={userId}
+                                                    value={
+                                                        name
+                                                    }
                                                     onChange={(
                                                         event
                                                     ) =>
-                                                        setUserId(
+                                                        setName(
                                                             event.target.value
                                                         )
                                                     }
-                                                    placeholder="Enter user ID"
-                                                    disabled={saving}
+                                                    placeholder="Enter member name"
+                                                    disabled={
+                                                        saving
+                                                    }
+                                                    required
                                                 />
 
-                                                <small className="text-muted">
-                                                    Enter the ID of an existing member-role user.
-                                                </small>
-
                                             </div>
-                                        )}
 
-                                        {/* NAME */}
+                                            {/* EMAIL */}
 
-                                        <div className="col-md-6">
+                                            <div className="col-md-6">
 
-                                            <label className="form-label fw-semibold">
-                                                Member Name
-                                            </label>
-
-                                            <input
-                                                type="text"
-                                                className="form-control"
-                                                value={name}
-                                                onChange={(
-                                                    event
-                                                ) =>
-                                                    setName(
-                                                        event.target.value
-                                                    )
-                                                }
-                                                placeholder="Enter member name"
-                                                disabled={saving}
-                                            />
-
-                                        </div>
-
-                                        {/* EMAIL */}
-
-                                        <div className="col-md-6">
-
-                                            <label className="form-label fw-semibold">
-                                                Email
-                                            </label>
-
-                                            <input
-                                                type="email"
-                                                className="form-control"
-                                                value={email}
-                                                onChange={(
-                                                    event
-                                                ) =>
-                                                    setEmail(
-                                                        event.target.value
-                                                    )
-                                                }
-                                                placeholder="Enter email"
-                                                disabled={saving}
-                                            />
-
-                                        </div>
-
-                                        {/* PHONE */}
-
-                                        <div className="col-md-6">
-
-                                            <label className="form-label fw-semibold">
-                                                Phone
-                                            </label>
-
-                                            <input
-                                                type="text"
-                                                className="form-control"
-                                                value={phone}
-                                                onChange={(
-                                                    event
-                                                ) =>
-                                                    setPhone(
-                                                        event.target.value
-                                                    )
-                                                }
-                                                placeholder="Enter phone number"
-                                                disabled={saving}
-                                            />
-
-                                        </div>
-
-                                        {/* ADDRESS */}
-
-                                        <div className="col-12">
-
-                                            <label className="form-label fw-semibold">
-                                                Address
-                                            </label>
-
-                                            <textarea
-                                                className="form-control"
-                                                rows="3"
-                                                value={address}
-                                                onChange={(
-                                                    event
-                                                ) =>
-                                                    setAddress(
-                                                        event.target.value
-                                                    )
-                                                }
-                                                placeholder="Enter address"
-                                                disabled={saving}
-                                            ></textarea>
-
-                                        </div>
-
-                                        {/* ACTIVE */}
-
-                                        <div className="col-12">
-
-                                            <div className="form-check">
+                                                <label className="form-label fw-semibold">
+                                                    Email
+                                                </label>
 
                                                 <input
-                                                    className="form-check-input"
-                                                    type="checkbox"
-                                                    id="memberActive"
-                                                    checked={isActive}
+                                                    type="email"
+                                                    className="form-control"
+                                                    value={
+                                                        email
+                                                    }
                                                     onChange={(
                                                         event
                                                     ) =>
-                                                        setIsActive(
-                                                            event.target.checked
+                                                        setEmail(
+                                                            event.target.value
                                                         )
                                                     }
-                                                    disabled={saving}
+                                                    placeholder="Enter email address"
+                                                    disabled={
+                                                        saving
+                                                    }
+                                                    required
                                                 />
 
-                                                <label
-                                                    className="form-check-label fw-semibold"
-                                                    htmlFor="memberActive"
-                                                >
-                                                    Active Member
+                                            </div>
+
+                                            {/* PHONE */}
+
+                                            <div className="col-md-6">
+
+                                                <label className="form-label fw-semibold">
+                                                    Phone
                                                 </label>
+
+                                                <input
+                                                    type="text"
+                                                    className="form-control"
+                                                    value={
+                                                        phone
+                                                    }
+                                                    onChange={(
+                                                        event
+                                                    ) =>
+                                                        setPhone(
+                                                            event.target.value
+                                                        )
+                                                    }
+                                                    placeholder="Enter phone number"
+                                                    disabled={
+                                                        saving
+                                                    }
+                                                />
+
+                                            </div>
+
+                                            {/* ADDRESS */}
+
+                                            <div className="col-12">
+
+                                                <label className="form-label fw-semibold">
+                                                    Address
+                                                </label>
+
+                                                <textarea
+                                                    className="form-control"
+                                                    rows="3"
+                                                    value={
+                                                        address
+                                                    }
+                                                    onChange={(
+                                                        event
+                                                    ) =>
+                                                        setAddress(
+                                                            event.target.value
+                                                        )
+                                                    }
+                                                    placeholder="Enter member address"
+                                                    disabled={
+                                                        saving
+                                                    }
+                                                ></textarea>
+
+                                            </div>
+
+                                            {/* ACTIVE */}
+
+                                            <div className="col-12">
+
+                                                <div className="form-check form-switch">
+
+                                                    <input
+                                                        className="form-check-input"
+                                                        type="checkbox"
+                                                        role="switch"
+                                                        id="memberActive"
+                                                        checked={
+                                                            isActive
+                                                        }
+                                                        onChange={(
+                                                            event
+                                                        ) =>
+                                                            setIsActive(
+                                                                event.target.checked
+                                                            )
+                                                        }
+                                                        disabled={
+                                                            saving
+                                                        }
+                                                    />
+
+                                                    <label
+                                                        className="form-check-label fw-semibold"
+                                                        htmlFor="memberActive"
+                                                    >
+                                                        Active Member
+                                                    </label>
+
+                                                </div>
+
+                                                <small className="text-muted">
+                                                    Inactive members can remain in the system without being considered active library members.
+                                                </small>
 
                                             </div>
 
@@ -1173,62 +2001,79 @@ function Members() {
 
                                     </div>
 
-                                </div>
+                                    {/* FOOTER */}
 
-                                <div className="modal-footer">
+                                    <div className="modal-footer">
 
-                                    <button
-                                        type="button"
-                                        className="btn btn-secondary"
-                                        onClick={
-                                            closeModal
-                                        }
-                                        disabled={saving}
-                                    >
-                                        Cancel
-                                    </button>
+                                        <button
+                                            type="button"
+                                            className="btn btn-secondary"
+                                            onClick={
+                                                closeModal
+                                            }
+                                            disabled={
+                                                saving
+                                            }
+                                        >
+                                            Cancel
+                                        </button>
 
-                                    <button
-                                        type="submit"
-                                        className="btn btn-primary"
-                                        disabled={saving}
-                                    >
+                                        <button
+                                            type="submit"
+                                            className="btn btn-primary"
+                                            disabled={
+                                                saving
+                                            }
+                                        >
 
-                                        {saving ? (
-                                            <>
-                                                <span
-                                                    className="spinner-border spinner-border-sm me-2"
-                                                    role="status"
-                                                ></span>
+                                            {saving ? (
 
-                                                Saving...
-                                            </>
-                                        ) : editingMember ? (
-                                            "Update Member"
-                                        ) : (
-                                            "Add Member"
-                                        )}
+                                                <>
 
-                                    </button>
+                                                    <span
+                                                        className="spinner-border spinner-border-sm me-2"
+                                                        role="status"
+                                                    ></span>
 
-                                </div>
+                                                    Saving...
 
-                            </form>
+                                                </>
+
+                                            ) : editingMember ? (
+
+                                                "Update Member"
+
+                                            ) : (
+
+                                                "Add Member"
+
+                                            )}
+
+                                        </button>
+
+                                    </div>
+
+                                </form>
+
+                            </div>
 
                         </div>
 
                     </div>
 
-                </div>
-            )}
+                    {/* BACKDROP */}
 
-            {/* BACKDROP */}
+                    <div
+                        className="modal-backdrop fade show"
+                        onClick={
+                            saving
+                                ? undefined
+                                : closeModal
+                        }
+                    ></div>
 
-            {showModal && (
-                <div
-                    className="modal-backdrop fade show"
-                    onClick={closeModal}
-                ></div>
+                </>
+
             )}
 
         </div>

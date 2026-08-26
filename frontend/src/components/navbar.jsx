@@ -10,6 +10,7 @@ function Navbar() {
 
     return (
         <nav className="navbar navbar-expand-lg navbar-dark bg-dark shadow-sm">
+
             <div className="container">
 
                 {/* Brand */}
@@ -19,6 +20,7 @@ function Navbar() {
                 >
                     📚 Library Management
                 </Link>
+
 
                 {/* Mobile Toggle */}
                 <button
@@ -33,6 +35,7 @@ function Navbar() {
                     <span className="navbar-toggler-icon"></span>
                 </button>
 
+
                 {/* Navbar Content */}
                 <div
                     className="collapse navbar-collapse"
@@ -41,7 +44,11 @@ function Navbar() {
 
                     {isAuthenticated ? (
                         <>
+
+                            {/* ========================= */}
                             {/* Navigation Links */}
+                            {/* ========================= */}
+
                             <ul className="navbar-nav me-auto mb-2 mb-lg-0">
 
                                 {/* Dashboard - All authenticated users */}
@@ -54,6 +61,7 @@ function Navbar() {
                                     </Link>
                                 </li>
 
+
                                 {/* Books - All authenticated users */}
                                 <li className="nav-item">
                                     <Link
@@ -64,17 +72,7 @@ function Navbar() {
                                     </Link>
                                 </li>
 
-                                {/* Authors - All authenticated users */}
-                                <li className="nav-item">
-                                    <Link
-                                        to="/authors"
-                                        className="nav-link"
-                                    >
-                                        Authors
-                                    </Link>
-                                </li>
-
-                                {/* Member only */}
+                                {/* Member Only */}
                                 {user?.role === "member" && (
                                     <li className="nav-item">
                                         <Link
@@ -86,10 +84,12 @@ function Navbar() {
                                     </li>
                                 )}
 
-                                {/* Librarian and Admin */}
+
+                                {/* Librarian + Admin */}
                                 {(user?.role === "librarian" ||
                                     user?.role === "admin") && (
                                     <>
+
                                         <li className="nav-item">
                                             <Link
                                                 to="/members"
@@ -107,60 +107,121 @@ function Navbar() {
                                                 Loans
                                             </Link>
                                         </li>
+
                                     </>
                                 )}
 
-                                {/* Admin only */}
+
+                                {/* Admin Only */}
                                 {user?.role === "admin" && (
                                     <li className="nav-item">
                                         <Link
                                             to="/admin"
                                             className="nav-link"
                                         >
-                                            Admin
+                                            👑 Admin
                                         </Link>
                                     </li>
                                 )}
 
                             </ul>
 
-                            {/* User Info + Logout */}
-                            <div className="d-flex align-items-center gap-3">
 
-                                <span className="text-light small">
-                                    Welcome,{" "}
-                                    <strong>
-                                        {user?.username}
-                                    </strong>{" "}
+                            {/* ========================= */}
+                            {/* User Profile Dropdown */}
+                            {/* ========================= */}
+
+                            <div className="dropdown">
+
+                                <button
+                                    className="btn btn-dark dropdown-toggle d-flex align-items-center gap-2"
+                                    type="button"
+                                    data-bs-toggle="dropdown"
+                                    aria-expanded="false"
+                                >
+
+                                    <span>
+                                        Welcome,{" "}
+                                        <strong>
+                                            {user?.username}
+                                        </strong>
+                                    </span>
 
                                     <span className="badge bg-primary text-uppercase">
                                         {user?.role}
                                     </span>
-                                </span>
 
-                                <button
-                                    onClick={logout}
-                                    className="btn btn-outline-light btn-sm"
-                                >
-                                    Logout
                                 </button>
 
+
+                                {/* Dropdown Menu */}
+                                <ul className="dropdown-menu dropdown-menu-end shadow">
+
+                                    {/* Change Password */}
+                                    <li>
+                                        <Link
+                                            to="/change-password"
+                                            className="dropdown-item"
+                                        >
+                                            🔑 Change Password
+                                        </Link>
+                                    </li>
+
+
+                                    {/* Divider */}
+                                    <li>
+                                        <hr className="dropdown-divider" />
+                                    </li>
+
+
+                                    {/* Logout */}
+                                    <li>
+                                        <button
+                                            onClick={logout}
+                                            className="dropdown-item text-danger"
+                                        >
+                                            🚪 Logout
+                                        </button>
+                                    </li>
+
+                                </ul>
+
                             </div>
+
                         </>
                     ) : (
-                        /* Login */
-                        <div className="ms-auto">
+
+                        /* ========================= */
+                        /* Logged Out Buttons */
+                        /* ========================= */
+
+                        <div className="ms-auto d-flex gap-2">
+
+                            {/* Login */}
                             <Link
                                 to="/login"
-                                className="btn btn-primary btn-sm"
+                                className="btn btn-outline-light btn-sm"
                             >
                                 Login
                             </Link>
+
+
+                            {/* Signup */}
+                            <Link
+                                to="/signup"
+                                className="btn btn-primary btn-sm"
+                            >
+                                Sign Up
+                            </Link>
+
                         </div>
+
                     )}
 
                 </div>
+
             </div>
+
         </nav>
     );
 }

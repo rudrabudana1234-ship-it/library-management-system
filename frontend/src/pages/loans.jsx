@@ -5,40 +5,42 @@ import { useAuth } from "../context/authcontext";
 function Loans() {
     const { user } = useAuth();
 
-    // =========================
+    // =====================================================
     // LOANS
-    // =========================
+    // =====================================================
 
     const [loans, setLoans] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
 
-    // =========================
+    // =====================================================
     // PAGINATION
-    // =========================
+    // =====================================================
 
     const [nextPage, setNextPage] = useState(null);
     const [previousPage, setPreviousPage] = useState(null);
     const [totalCount, setTotalCount] = useState(0);
 
-    // =========================
-    // SEARCH + FILTERS
-    // =========================
+    // =====================================================
+    // SEARCH / FILTERS
+    // =====================================================
 
     const [search, setSearch] = useState("");
     const [statusFilter, setStatusFilter] = useState("");
+    const [bookFilter, setBookFilter] = useState("");
+    const [memberFilter, setMemberFilter] = useState("");
     const [ordering, setOrdering] = useState("-borrow_date");
 
-    // =========================
-    // BOOKS + MEMBERS
-    // =========================
+    // =====================================================
+    // BOOKS / MEMBERS
+    // =====================================================
 
     const [books, setBooks] = useState([]);
     const [members, setMembers] = useState([]);
 
-    // =========================
+    // =====================================================
     // MODAL
-    // =========================
+    // =====================================================
 
     const [showModal, setShowModal] = useState(false);
 
@@ -51,9 +53,9 @@ function Loans() {
     const [formError, setFormError] = useState("");
     const [saving, setSaving] = useState(false);
 
-    // =========================
+    // =====================================================
     // ROLE
-    // =========================
+    // =====================================================
 
     const canManageLoans =
         user?.role === "admin" ||
@@ -62,9 +64,9 @@ function Loans() {
     const canEditLoans =
         user?.role === "admin";
 
-    // =========================
+    // =====================================================
     // FETCH LOANS
-    // =========================
+    // =====================================================
 
     const fetchLoans = async (url = "loans/") => {
         try {
@@ -87,9 +89,7 @@ function Loans() {
                 setTotalCount(
                     response.data.count || 0
                 );
-            }
-
-            else if (Array.isArray(response.data)) {
+            } else if (Array.isArray(response.data)) {
                 setLoans(response.data);
 
                 setNextPage(null);
@@ -98,9 +98,7 @@ function Loans() {
                 setTotalCount(
                     response.data.length
                 );
-            }
-
-            else {
+            } else {
                 setLoans([]);
                 setNextPage(null);
                 setPreviousPage(null);
@@ -130,25 +128,21 @@ function Loans() {
         }
     };
 
-    // =========================
+    // =====================================================
     // FETCH BOOKS
-    // =========================
+    // =====================================================
 
     const fetchBooks = async () => {
         try {
             const response = await api.get(
-                "books/"
+                "books/?ordering=title"
             );
 
             if (Array.isArray(response.data.results)) {
                 setBooks(response.data.results);
-            }
-
-            else if (Array.isArray(response.data)) {
+            } else if (Array.isArray(response.data)) {
                 setBooks(response.data);
-            }
-
-            else {
+            } else {
                 setBooks([]);
             }
 
@@ -161,25 +155,21 @@ function Loans() {
         }
     };
 
-    // =========================
+    // =====================================================
     // FETCH MEMBERS
-    // =========================
+    // =====================================================
 
     const fetchMembers = async () => {
         try {
             const response = await api.get(
-                "members/"
+                "members/?ordering=name"
             );
 
             if (Array.isArray(response.data.results)) {
                 setMembers(response.data.results);
-            }
-
-            else if (Array.isArray(response.data)) {
+            } else if (Array.isArray(response.data)) {
                 setMembers(response.data);
-            }
-
-            else {
+            } else {
                 setMembers([]);
             }
 
@@ -192,12 +182,14 @@ function Loans() {
         }
     };
 
-    // =========================
+    // =====================================================
     // INITIAL LOAD
-    // =========================
+    // =====================================================
 
     useEffect(() => {
-        fetchLoans();
+        fetchLoans(
+            "loans/?ordering=-borrow_date"
+        );
 
         if (canManageLoans) {
             fetchBooks();
@@ -205,9 +197,9 @@ function Loans() {
         }
     }, [canManageLoans]);
 
-    // =========================
+    // =====================================================
     // BUILD FILTER URL
-    // =========================
+    // =====================================================
 
     const buildFilterUrl = () => {
         const params = new URLSearchParams();
@@ -226,6 +218,20 @@ function Loans() {
             );
         }
 
+        if (bookFilter) {
+            params.append(
+                "book",
+                bookFilter
+            );
+        }
+
+        if (memberFilter) {
+            params.append(
+                "member",
+                memberFilter
+            );
+        }
+
         if (ordering) {
             params.append(
                 "ordering",
@@ -241,9 +247,9 @@ function Loans() {
             : "loans/";
     };
 
-    // =========================
-    // APPLY FILTERS
-    // =========================
+    // =====================================================
+    // APPLY SEARCH
+    // =====================================================
 
     const handleSearch = (event) => {
         event.preventDefault();
@@ -253,95 +259,158 @@ function Loans() {
         );
     };
 
-    // =========================
-    // STATUS CHANGE
-    // =========================
+    // =====================================================
+    // STATUS FILTER
+    // =====================================================
 
-    const handleStatusChange = (
-        event
-    ) => {
+    const handleStatusChange = (event) => {
         const value =
             event.target.value;
 
         setStatusFilter(value);
 
-        const params =
-            new URLSearchParams();
-
-        if (search.trim()) {
-            params.append(
-                "search",
-                search.trim()
-            );
-        }
-
-        if (value) {
-            params.append(
-                "status",
-                value
-            );
-        }
-
-        if (ordering) {
-            params.append(
-                "ordering",
-                ordering
-            );
-        }
-
         fetchLoans(
-            `loans/?${params.toString()}`
+            buildUrlWithChanges({
+                status: value,
+            })
         );
     };
 
-    // =========================
-    // ORDERING CHANGE
-    // =========================
+    // =====================================================
+    // BOOK FILTER
+    // =====================================================
 
-    const handleOrderingChange = (
-        event
-    ) => {
+    const handleBookChange = (event) => {
+        const value =
+            event.target.value;
+
+        setBookFilter(value);
+
+        fetchLoans(
+            buildUrlWithChanges({
+                book: value,
+            })
+        );
+    };
+
+    // =====================================================
+    // MEMBER FILTER
+    // =====================================================
+
+    const handleMemberChange = (event) => {
+        const value =
+            event.target.value;
+
+        setMemberFilter(value);
+
+        fetchLoans(
+            buildUrlWithChanges({
+                member: value,
+            })
+        );
+    };
+
+    // =====================================================
+    // ORDERING
+    // =====================================================
+
+    const handleOrderingChange = (event) => {
         const value =
             event.target.value;
 
         setOrdering(value);
 
-        const params =
-            new URLSearchParams();
-
-        if (search.trim()) {
-            params.append(
-                "search",
-                search.trim()
-            );
-        }
-
-        if (statusFilter) {
-            params.append(
-                "status",
-                statusFilter
-            );
-        }
-
-        if (value) {
-            params.append(
-                "ordering",
-                value
-            );
-        }
-
         fetchLoans(
-            `loans/?${params.toString()}`
+            buildUrlWithChanges({
+                ordering: value,
+            })
         );
     };
 
-    // =========================
+    // =====================================================
+    // BUILD URL WITH ONE CHANGED FILTER
+    // =====================================================
+
+    const buildUrlWithChanges = (changes = {}) => {
+        const params = new URLSearchParams();
+
+        const currentSearch =
+            changes.search !== undefined
+                ? changes.search
+                : search;
+
+        const currentStatus =
+            changes.status !== undefined
+                ? changes.status
+                : statusFilter;
+
+        const currentBook =
+            changes.book !== undefined
+                ? changes.book
+                : bookFilter;
+
+        const currentMember =
+            changes.member !== undefined
+                ? changes.member
+                : memberFilter;
+
+        const currentOrdering =
+            changes.ordering !== undefined
+                ? changes.ordering
+                : ordering;
+
+        if (currentSearch?.trim()) {
+            params.append(
+                "search",
+                currentSearch.trim()
+            );
+        }
+
+        if (currentStatus) {
+            params.append(
+                "status",
+                currentStatus
+            );
+        }
+
+        if (currentBook) {
+            params.append(
+                "book",
+                currentBook
+            );
+        }
+
+        if (currentMember) {
+            params.append(
+                "member",
+                currentMember
+            );
+        }
+
+        if (currentOrdering) {
+            params.append(
+                "ordering",
+                currentOrdering
+            );
+        }
+
+        const queryString =
+            params.toString();
+
+        return queryString
+            ? `loans/?${queryString}`
+            : "loans/";
+    };
+
+    // =====================================================
     // CLEAR FILTERS
-    // =========================
+    // =====================================================
 
     const handleClearFilters = () => {
         setSearch("");
         setStatusFilter("");
+        setBookFilter("");
+        setMemberFilter("");
         setOrdering("-borrow_date");
 
         fetchLoans(
@@ -349,9 +418,9 @@ function Loans() {
         );
     };
 
-    // =========================
-    // OPEN ADD LOAN MODAL
-    // =========================
+    // =====================================================
+    // OPEN ISSUE MODAL
+    // =====================================================
 
     const handleAddLoan = () => {
         setFormData({
@@ -364,9 +433,9 @@ function Loans() {
         setShowModal(true);
     };
 
-    // =========================
+    // =====================================================
     // CLOSE MODAL
-    // =========================
+    // =====================================================
 
     const closeModal = () => {
         if (saving) {
@@ -384,16 +453,14 @@ function Loans() {
         setFormError("");
     };
 
-    // =========================
+    // =====================================================
     // FORM CHANGE
-    // =========================
+    // =====================================================
 
-    const handleFormChange = (
-        event
-    ) => {
+    const handleFormChange = (event) => {
         const {
             name,
-            value
+            value,
         } = event.target;
 
         setFormData(
@@ -404,13 +471,11 @@ function Loans() {
         );
     };
 
-    // =========================
+    // =====================================================
     // ISSUE BOOK
-    // =========================
+    // =====================================================
 
-    const handleSubmit = async (
-        event
-    ) => {
+    const handleSubmit = async (event) => {
         event.preventDefault();
 
         setFormError("");
@@ -453,7 +518,15 @@ function Loans() {
                 }
             );
 
-            closeModal();
+            setShowModal(false);
+
+            setFormData({
+                book: "",
+                member: "",
+                due_date: "",
+            });
+
+            setFormError("");
 
             await fetchLoans(
                 buildFilterUrl()
@@ -480,16 +553,14 @@ function Loans() {
         }
     };
 
-    // =========================
+    // =====================================================
     // RETURN BOOK
-    // =========================
+    // =====================================================
 
-    const handleReturnBook = async (
-        loan
-    ) => {
+    const handleReturnBook = async (loan) => {
         const confirmed =
             window.confirm(
-                `Return "${loan.book}"?`
+                `Return "${loan.book_title || loan.book}"?`
             );
 
         if (!confirmed) {
@@ -525,13 +596,11 @@ function Loans() {
         }
     };
 
-    // =========================
+    // =====================================================
     // DELETE LOAN
-    // =========================
+    // =====================================================
 
-    const handleDeleteLoan = async (
-        loan
-    ) => {
+    const handleDeleteLoan = async (loan) => {
         const confirmed =
             window.confirm(
                 "Are you sure you want to delete this loan?"
@@ -570,13 +639,11 @@ function Loans() {
         }
     };
 
-    // =========================
+    // =====================================================
     // STATUS BADGE
-    // =========================
+    // =====================================================
 
-    const getStatusBadge = (
-        status
-    ) => {
+    const getStatusBadge = (status) => {
         if (status === "returned") {
             return (
                 <span className="badge bg-success">
@@ -600,16 +667,16 @@ function Loans() {
         );
     };
 
-    // =========================
+    // =====================================================
     // UI
-    // =========================
+    // =====================================================
 
     return (
         <div className="container py-4">
 
-            {/* =========================
+            {/* =================================================
                 HEADER
-            ========================== */}
+            ================================================= */}
 
             <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
 
@@ -642,9 +709,9 @@ function Loans() {
 
             </div>
 
-            {/* =========================
-                SEARCH + FILTERS
-            ========================== */}
+            {/* =================================================
+                SEARCH / FILTER CARD
+            ================================================= */}
 
             <div className="card border-0 shadow-sm mb-4">
 
@@ -657,23 +724,35 @@ function Loans() {
 
                         {/* SEARCH */}
 
-                        <div className="col-lg-5">
+                        <div className="col-lg-6">
 
                             <label className="form-label fw-semibold">
-                                Search
+                                Search Loans
                             </label>
 
-                            <input
-                                type="text"
-                                className="form-control"
-                                placeholder="Book, member or status..."
-                                value={search}
-                                onChange={(event) =>
-                                    setSearch(
-                                        event.target.value
-                                    )
-                                }
-                            />
+                            <div className="input-group">
+
+                                <span className="input-group-text">
+                                    🔍
+                                </span>
+
+                                <input
+                                    type="text"
+                                    className="form-control"
+                                    placeholder="Book, ISBN, member, email, phone or status..."
+                                    value={search}
+                                    onChange={(event) =>
+                                        setSearch(
+                                            event.target.value
+                                        )
+                                    }
+                                />
+
+                            </div>
+
+                            <small className="text-muted">
+                                Search using the first few characters or a complete value.
+                            </small>
 
                         </div>
 
@@ -715,7 +794,7 @@ function Loans() {
 
                         {/* ORDERING */}
 
-                        <div className="col-lg-4">
+                        <div className="col-lg-3">
 
                             <label className="form-label fw-semibold">
                                 Sort By
@@ -749,6 +828,26 @@ function Loans() {
                                     Recently Returned
                                 </option>
 
+                                <option value="return_date">
+                                    Oldest Returned
+                                </option>
+
+                                <option value="book__title">
+                                    Book A-Z
+                                </option>
+
+                                <option value="-book__title">
+                                    Book Z-A
+                                </option>
+
+                                <option value="member__name">
+                                    Member A-Z
+                                </option>
+
+                                <option value="-member__name">
+                                    Member Z-A
+                                </option>
+
                                 <option value="status">
                                     Status
                                 </option>
@@ -757,13 +856,90 @@ function Loans() {
 
                         </div>
 
+                        {/* BOOK FILTER */}
+
+                        <div className="col-lg-5">
+
+                            <label className="form-label fw-semibold">
+                                Book
+                            </label>
+
+                            <select
+                                className="form-select"
+                                value={bookFilter}
+                                onChange={
+                                    handleBookChange
+                                }
+                            >
+
+                                <option value="">
+                                    All Books
+                                </option>
+
+                                {books.map(
+                                    book => (
+                                        <option
+                                            key={book.id}
+                                            value={book.id}
+                                        >
+                                            {book.title}
+                                            {book.isbn
+                                                ? ` (${book.isbn})`
+                                                : ""}
+                                        </option>
+                                    )
+                                )}
+
+                            </select>
+
+                        </div>
+
+                        {/* MEMBER FILTER */}
+
+                        <div className="col-lg-4">
+
+                            <label className="form-label fw-semibold">
+                                Member
+                            </label>
+
+                            <select
+                                className="form-select"
+                                value={memberFilter}
+                                onChange={
+                                    handleMemberChange
+                                }
+                            >
+
+                                <option value="">
+                                    All Members
+                                </option>
+
+                                {members.map(
+                                    member => (
+                                        <option
+                                            key={member.id}
+                                            value={member.id}
+                                        >
+                                            {member.name}
+                                            {member.email
+                                                ? ` - ${member.email}`
+                                                : ""}
+                                        </option>
+                                    )
+                                )}
+
+                            </select>
+
+                        </div>
+
                         {/* BUTTONS */}
 
-                        <div className="col-12 d-flex gap-2">
+                        <div className="col-lg-3 d-flex align-items-end gap-2">
 
                             <button
                                 type="submit"
-                                className="btn btn-primary"
+                                className="btn btn-primary flex-grow-1"
+                                disabled={loading}
                             >
                                 🔍 Search
                             </button>
@@ -774,8 +950,9 @@ function Loans() {
                                 onClick={
                                     handleClearFilters
                                 }
+                                disabled={loading}
                             >
-                                Clear Filters
+                                Clear
                             </button>
 
                         </div>
@@ -786,9 +963,51 @@ function Loans() {
 
             </div>
 
-            {/* =========================
+            {/* =================================================
+                ACTIVE FILTER SUMMARY
+            ================================================= */}
+
+            {(search.trim() ||
+                statusFilter ||
+                bookFilter ||
+                memberFilter) && (
+
+                <div className="alert alert-light border d-flex flex-wrap align-items-center gap-2 mb-4">
+
+                    <strong>
+                        Active filters:
+                    </strong>
+
+                    {search.trim() && (
+                        <span className="badge bg-primary">
+                            Search: {search.trim()}
+                        </span>
+                    )}
+
+                    {statusFilter && (
+                        <span className="badge bg-secondary">
+                            Status: {statusFilter}
+                        </span>
+                    )}
+
+                    {bookFilter && (
+                        <span className="badge bg-secondary">
+                            Book filter active
+                        </span>
+                    )}
+
+                    {memberFilter && (
+                        <span className="badge bg-secondary">
+                            Member filter active
+                        </span>
+                    )}
+
+                </div>
+            )}
+
+            {/* =================================================
                 ERROR
-            ========================== */}
+            ================================================= */}
 
             {error && (
                 <div
@@ -818,9 +1037,9 @@ function Loans() {
                 </div>
             )}
 
-            {/* =========================
+            {/* =================================================
                 LOADING
-            ========================== */}
+            ================================================= */}
 
             {loading && (
                 <div className="text-center py-5">
@@ -834,16 +1053,16 @@ function Loans() {
                         </span>
                     </div>
 
-                    <p className="text-muted mt-3">
+                    <p className="text-muted mt-3 mb-0">
                         Loading loans...
                     </p>
 
                 </div>
             )}
 
-            {/* =========================
+            {/* =================================================
                 EMPTY
-            ========================== */}
+            ================================================= */}
 
             {!loading &&
                 !error &&
@@ -862,7 +1081,7 @@ function Loans() {
                             </h5>
 
                             <p className="text-muted mb-3">
-                                Try changing your search or filters.
+                                No loans match your current search or filters.
                             </p>
 
                             <button
@@ -879,9 +1098,9 @@ function Loans() {
                     </div>
                 )}
 
-            {/* =========================
+            {/* =================================================
                 LOANS TABLE
-            ========================== */}
+            ================================================= */}
 
             {!loading &&
                 loans.length > 0 && (
@@ -890,14 +1109,14 @@ function Loans() {
 
                         <div className="card-header bg-white py-3">
 
-                            <div className="d-flex justify-content-between align-items-center">
+                            <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
 
                                 <h5 className="fw-bold mb-0">
                                     Loans List
                                 </h5>
 
                                 <span className="text-muted">
-                                    Showing {loans.length} of {totalCount}
+                                    Showing {loans.length} of {totalCount} loans
                                 </span>
 
                             </div>
@@ -915,21 +1134,17 @@ function Loans() {
                                         <tr>
 
                                             <th>#</th>
-
                                             <th>Book</th>
-
                                             <th>Member</th>
-
                                             <th>Status</th>
-
                                             <th>Borrowed</th>
-
                                             <th>Due Date</th>
-
                                             <th>Returned</th>
 
                                             {canManageLoans && (
-                                                <th>Actions</th>
+                                                <th>
+                                                    Actions
+                                                </th>
                                             )}
 
                                         </tr>
@@ -955,13 +1170,34 @@ function Loans() {
                                                     </td>
 
                                                     <td>
-                                                        <span className="fw-semibold">
-                                                            {loan.book}
-                                                        </span>
+                                                        <div className="fw-semibold">
+                                                            {loan.book_title ||
+                                                                loan.book}
+                                                        </div>
+
+                                                        {loan.book_isbn && (
+                                                            <small className="text-muted">
+                                                                ISBN:{" "}
+                                                                {
+                                                                    loan.book_isbn
+                                                                }
+                                                            </small>
+                                                        )}
                                                     </td>
 
                                                     <td>
-                                                        {loan.member}
+                                                        <div>
+                                                            {loan.member_name ||
+                                                                loan.member}
+                                                        </div>
+
+                                                        {loan.member_email && (
+                                                            <small className="text-muted">
+                                                                {
+                                                                    loan.member_email
+                                                                }
+                                                            </small>
+                                                        )}
                                                     </td>
 
                                                     <td>
@@ -991,7 +1227,7 @@ function Loans() {
                                                     {canManageLoans && (
                                                         <td>
 
-                                                            <div className="d-flex gap-2">
+                                                            <div className="d-flex flex-wrap gap-2">
 
                                                                 {loan.status !==
                                                                     "returned" && (
@@ -1041,15 +1277,16 @@ function Loans() {
                     </div>
                 )}
 
-            {/* =========================
+            {/* =================================================
                 PAGINATION
-            ========================== */}
+            ================================================= */}
 
             {!loading &&
+                !error &&
                 (previousPage ||
                     nextPage) && (
 
-                    <div className="d-flex justify-content-between align-items-center mt-4">
+                    <div className="d-flex flex-column flex-sm-row justify-content-between align-items-center gap-3 mt-4">
 
                         <button
                             className="btn btn-outline-primary"
@@ -1067,7 +1304,7 @@ function Loans() {
                         </button>
 
                         <span className="text-muted">
-                            Page Results
+                            Showing {loans.length} results
                         </span>
 
                         <button
@@ -1088,9 +1325,9 @@ function Loans() {
                     </div>
                 )}
 
-            {/* =========================
+            {/* =================================================
                 ISSUE BOOK MODAL
-            ========================== */}
+            ================================================= */}
 
             {showModal && (
 
@@ -1115,7 +1352,7 @@ function Loans() {
                                     className="btn-close"
                                     onClick={closeModal}
                                     disabled={saving}
-                                ></button>
+                                />
 
                             </div>
 
@@ -1164,9 +1401,7 @@ function Loans() {
                                             </option>
 
                                             {books.map(
-                                                (
-                                                    book
-                                                ) => (
+                                                book => (
 
                                                     <option
                                                         key={
@@ -1183,7 +1418,9 @@ function Loans() {
                                                         {book.title}
                                                         {" "}
                                                         (
-                                                        {book.available}
+                                                        {
+                                                            book.available
+                                                        }
                                                         {" "}
                                                         available)
                                                     </option>
@@ -1222,9 +1459,7 @@ function Loans() {
                                             </option>
 
                                             {members.map(
-                                                (
-                                                    member
-                                                ) => (
+                                                member => (
 
                                                     <option
                                                         key={
@@ -1235,9 +1470,7 @@ function Loans() {
                                                         }
                                                     >
                                                         {member.name}
-                                                        {" "}
-                                                        -
-                                                        {" "}
+                                                        {" - "}
                                                         {member.email}
                                                     </option>
 
@@ -1303,7 +1536,7 @@ function Loans() {
                                                 <span
                                                     className="spinner-border spinner-border-sm me-2"
                                                     role="status"
-                                                ></span>
+                                                />
 
                                                 Issuing...
                                             </>
@@ -1324,15 +1557,15 @@ function Loans() {
                 </div>
             )}
 
-            {/* =========================
+            {/* =================================================
                 BACKDROP
-            ========================== */}
+            ================================================= */}
 
             {showModal && (
                 <div
                     className="modal-backdrop fade show"
                     onClick={closeModal}
-                ></div>
+                />
             )}
 
         </div>

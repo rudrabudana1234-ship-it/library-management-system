@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import api from "../services/api";
 import { useAuth } from "../context/authcontext";
 
@@ -7,29 +7,83 @@ function Books() {
 
     const [books, setBooks] = useState([]);
     const [authors, setAuthors] = useState([]);
+    const [categories, setCategories] = useState([]);
 
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(true);
 
-    // Pagination
+    // =========================
+    // PAGINATION
+    // =========================
+
     const [nextPage, setNextPage] = useState(null);
     const [previousPage, setPreviousPage] = useState(null);
 
-    // Search & Ordering
+    // =========================
+    // SEARCH / FILTER / ORDERING
+    // =========================
+
     const [search, setSearch] = useState("");
     const [ordering, setOrdering] = useState("");
+    const [selectedAuthor, setSelectedAuthor] = useState("");
+    const [selectedCategory, setSelectedCategory] = useState("");
 
-    // Modal
+    // =========================
+    // SEARCH SUGGESTIONS
+    // =========================
+
+    const [suggestions, setSuggestions] = useState([]);
+    const [showSuggestions, setShowSuggestions] = useState(false);
+    const [recentSearches, setRecentSearches] = useState([]);
+
+    const searchContainerRef = useRef(null);
+    const searchTimerRef = useRef(null);
+
+    // =========================
+    // USER RECENT SEARCH KEY
+    // =========================
+
+    const getRecentSearchStorageKey = () => {
+        if (!user) {
+            return null;
+        }
+
+        const username = String(
+            user.username || "unknown"
+        )
+            .trim()
+            .toLowerCase();
+
+        const role = String(
+            user.role || "unknown"
+        )
+            .trim()
+            .toLowerCase();
+
+        return `library_recent_book_searches_${role}_${username}`;
+    };
+
+    // =========================
+    // MODAL
+    // =========================
+
     const [showModal, setShowModal] = useState(false);
     const [editingBook, setEditingBook] = useState(null);
 
-    // Form
+    // =========================
+    // FORM
+    // =========================
+
     const [formData, setFormData] = useState({
         title: "",
         author: "",
         isbn: "",
         quantity: "",
+        category: "",
+        cover: null,
     });
+
+    const [coverPreview, setCoverPreview] = useState("");
 
     const [formError, setFormError] = useState("");
     const [saving, setSaving] = useState(false);
@@ -43,85 +97,286 @@ function Books() {
         user?.role === "librarian";
 
     // =========================
+    // EXTRACT RESULTS
+    // =========================
+
+    const extractResults = (data) => {
+        if (
+            data &&
+            Array.isArray(data.results)
+        ) {
+            return data.results;
+        }
+
+        if (Array.isArray(data)) {
+            return data;
+        }
+
+        return [];
+    };
+
+    // =========================
+    // FETCH ALL PAGINATED DATA
+    // =========================
+    //
+    // Important:
+    // Categories and authors are paginated
+    // by Django REST Framework.
+    //
+    // This function keeps requesting every
+    // page until "next" becomes null.
+    // =========================
+
+    const fetchAllPages = async (initialUrl) => {
+        let allResults = [];
+        let nextUrl = initialUrl;
+
+        while (nextUrl) {
+            const response = await api.get(nextUrl);
+
+            const pageResults =
+                extractResults(response.data);
+
+            allResults = [
+                ...allResults,
+                ...pageResults,
+            ];
+
+            if (
+                response.data &&
+                response.data.next
+            ) {
+                nextUrl = response.data.next;
+            } else {
+                nextUrl = null;
+            }
+        }
+
+        return allResults;
+    };
+
+    // =========================
+    // GET BOOK CATEGORY
+    // =========================
+
+    const getBookCategory = (book) => {
+        if (
+            typeof book.category === "object" &&
+            book.category !== null
+        ) {
+            return (
+                book.category.name ||
+                book.category.title ||
+                ""
+            );
+        }
+
+        return (
+            book.category_name ||
+            book.category ||
+            ""
+        );
+    };
+
+    // =========================
+    // GET BOOK AUTHOR
+    // =========================
+
+    const getBookAuthor = (book) => {
+        return (
+            book.author_name ||
+            book.author?.name ||
+            book.author ||
+            "Unknown Author"
+        );
+    };
+
+    // =========================
+    // GET BOOK AVAILABLE
+    // =========================
+
+    const getBookAvailable = (book) => {
+        if (
+            book.available !== undefined &&
+            book.available !== null
+        ) {
+            return Number(book.available);
+        }
+
+        if (
+            book.available_quantity !== undefined &&
+            book.available_quantity !== null
+        ) {
+            return Number(
+                book.available_quantity
+            );
+        }
+
+        return Number(book.quantity || 0);
+    };
+
+    // =========================
+    // GET CATEGORY ID
+    // =========================
+
+    const getBookCategoryId = (book) => {
+        if (
+            typeof book.category === "number" ||
+            typeof book.category === "string"
+        ) {
+            return book.category;
+        }
+
+        if (
+            typeof book.category === "object" &&
+            book.category !== null
+        ) {
+            return book.category.id || "";
+        }
+
+        return book.category_id || "";
+    };
+
+    // =========================
+    // GET AUTHOR ID
+    // =========================
+
+    const getBookAuthorId = (book) => {
+        if (
+            typeof book.author === "number" ||
+            typeof book.author === "string"
+        ) {
+            return book.author;
+        }
+
+        if (
+            typeof book.author === "object" &&
+            book.author !== null
+        ) {
+            return book.author.id || "";
+        }
+
+        return book.author_id || "";
+    };
+
+    // =========================
+    // GET COVER URL
+    // =========================
+
+    const getCoverUrl = (book) => {
+        const cover =
+            book.cover ||
+            book.cover_image ||
+            "";
+
+        if (!cover) {
+            return "";
+        }
+
+        if (
+            cover.startsWith("http://") ||
+            cover.startsWith("https://")
+        ) {
+            return cover;
+        }
+
+        if (cover.startsWith("/")) {
+            return `http://127.0.0.1:8001${cover}`;
+        }
+
+        return `http://127.0.0.1:8001/media/${cover}`;
+    };
+
+    // =========================
+    // BUILD BOOK URL
+    // =========================
+
+    const buildBookUrl = (
+        nextSearch = search,
+        nextOrdering = ordering,
+        nextAuthor = selectedAuthor,
+        nextCategory = selectedCategory
+    ) => {
+        const params = new URLSearchParams();
+
+        if (nextSearch.trim()) {
+            params.append(
+                "search",
+                nextSearch.trim()
+            );
+        }
+
+        if (nextOrdering) {
+            params.append(
+                "ordering",
+                nextOrdering
+            );
+        }
+
+        if (nextAuthor) {
+            params.append(
+                "author",
+                nextAuthor
+            );
+        }
+
+        if (nextCategory) {
+            params.append(
+                "category",
+                nextCategory
+            );
+        }
+
+        const queryString =
+            params.toString();
+
+        return queryString
+            ? `books/?${queryString}`
+            : "books/";
+    };
+
+    // =========================
     // FETCH BOOKS
     // =========================
 
-    const fetchBooks = async (url = "books/") => {
+    const fetchBooks = async (url = null) => {
         try {
             setLoading(true);
             setError("");
 
-            let requestUrl = url;
+            const requestUrl =
+                url || buildBookUrl();
 
-            /*
-             * Search and ordering are added only
-             * when fetching the first page.
-             *
-             * Pagination URLs already contain
-             * their own query parameters.
-             */
-
-            if (url === "books/") {
-                const params = new URLSearchParams();
-
-                if (search.trim()) {
-                    params.append(
-                        "search",
-                        search.trim()
-                    );
-                }
-
-                if (ordering) {
-                    params.append(
-                        "ordering",
-                        ordering
-                    );
-                }
-
-                const queryString = params.toString();
-
-                if (queryString) {
-                    requestUrl = `books/?${queryString}`;
-                }
-            }
-
-            const response = await api.get(requestUrl);
+            const response =
+                await api.get(requestUrl);
 
             console.log(
                 "BOOK API RESPONSE:",
                 response.data
             );
 
-            // Paginated response
+            const results =
+                extractResults(
+                    response.data
+                );
+
+            setBooks(results);
+
             if (
                 response.data &&
-                Array.isArray(response.data.results)
+                Array.isArray(
+                    response.data.results
+                )
             ) {
-                setBooks(response.data.results);
-
                 setNextPage(
-                    response.data.next
+                    response.data.next || null
                 );
 
                 setPreviousPage(
-                    response.data.previous
+                    response.data.previous ||
+                    null
                 );
-            }
-
-            // Non-paginated response
-            else if (
-                Array.isArray(response.data)
-            ) {
-                setBooks(response.data);
-
-                setNextPage(null);
-                setPreviousPage(null);
-            }
-
-            // Invalid response
-            else {
-                setBooks([]);
-
+            } else {
                 setNextPage(null);
                 setPreviousPage(null);
             }
@@ -143,6 +398,8 @@ function Books() {
             );
 
             setBooks([]);
+            setNextPage(null);
+            setPreviousPage(null);
 
         } finally {
             setLoading(false);
@@ -150,35 +407,22 @@ function Books() {
     };
 
     // =========================
-    // FETCH AUTHORS
+    // FETCH ALL AUTHORS
     // =========================
 
     const fetchAuthors = async () => {
         try {
-            const response = await api.get(
-                "authors/"
+            const results =
+                await fetchAllPages(
+                    "authors/"
+                );
+
+            console.log(
+                "ALL AUTHORS:",
+                results
             );
 
-            if (
-                response.data &&
-                Array.isArray(
-                    response.data.results
-                )
-            ) {
-                setAuthors(
-                    response.data.results
-                );
-            }
-
-            else if (
-                Array.isArray(response.data)
-            ) {
-                setAuthors(response.data);
-            }
-
-            else {
-                setAuthors([]);
-            }
+            setAuthors(results);
 
         } catch (error) {
             console.error(
@@ -186,8 +430,81 @@ function Books() {
                 error.response?.data ||
                 error.message
             );
+
+            setAuthors([]);
         }
     };
+
+    // =========================
+    // FETCH ALL CATEGORIES
+    // =========================
+
+    const fetchCategories = async () => {
+        try {
+            const results =
+                await fetchAllPages(
+                    "categories/"
+                );
+
+            console.log(
+                "ALL CATEGORIES:",
+                results
+            );
+
+            setCategories(results);
+
+        } catch (error) {
+            console.error(
+                "CATEGORY API ERROR:",
+                error.response?.data ||
+                error.message
+            );
+
+            setCategories([]);
+        }
+    };
+
+    // =========================
+    // LOAD RECENT SEARCHES
+    // =========================
+
+    useEffect(() => {
+        setRecentSearches([]);
+
+        const storageKey =
+            getRecentSearchStorageKey();
+
+        if (!storageKey) {
+            return;
+        }
+
+        try {
+            const stored =
+                localStorage.getItem(
+                    storageKey
+                );
+
+            if (stored) {
+                const parsed =
+                    JSON.parse(stored);
+
+                if (Array.isArray(parsed)) {
+                    setRecentSearches(
+                        parsed
+                    );
+                }
+            }
+
+        } catch (error) {
+            console.error(
+                "RECENT SEARCH ERROR:",
+                error
+            );
+        }
+    }, [
+        user?.username,
+        user?.role,
+    ]);
 
     // =========================
     // INITIAL LOAD
@@ -195,45 +512,396 @@ function Books() {
 
     useEffect(() => {
         fetchBooks();
+        fetchAuthors();
+        fetchCategories();
+    }, []);
 
-        if (canManageBooks) {
-            fetchAuthors();
+    // =========================
+    // CLEAN SEARCH TIMER
+    // =========================
+
+    useEffect(() => {
+        return () => {
+            if (searchTimerRef.current) {
+                clearTimeout(
+                    searchTimerRef.current
+                );
+            }
+        };
+    }, []);
+
+    // =========================
+    // CLOSE SEARCH SUGGESTIONS
+    // =========================
+
+    useEffect(() => {
+        const handleClickOutside = (
+            event
+        ) => {
+            if (
+                searchContainerRef.current &&
+                !searchContainerRef.current.contains(
+                    event.target
+                )
+            ) {
+                setShowSuggestions(false);
+            }
+        };
+
+        document.addEventListener(
+            "mousedown",
+            handleClickOutside
+        );
+
+        return () => {
+            document.removeEventListener(
+                "mousedown",
+                handleClickOutside
+            );
+        };
+    }, []);
+
+    // =========================
+    // SEARCH SUGGESTIONS
+    // =========================
+
+    const fetchSearchSuggestions = async (
+        value
+    ) => {
+        const trimmedValue =
+            value.trim();
+
+        if (
+            trimmedValue.length < 2
+        ) {
+            setSuggestions([]);
+            return;
         }
-    }, [canManageBooks]);
 
-    // =========================
-    // SEARCH
-    // =========================
+        try {
+            const params =
+                new URLSearchParams();
 
-    const handleSearch = (event) => {
-        event.preventDefault();
+            params.append(
+                "search",
+                trimmedValue
+            );
 
-        fetchBooks();
+            const response =
+                await api.get(
+                    `books/?${params.toString()}`
+                );
+
+            const results =
+                extractResults(
+                    response.data
+                );
+
+            setSuggestions(
+                results.slice(0, 6)
+            );
+
+        } catch (error) {
+            console.error(
+                "SEARCH SUGGESTION ERROR:",
+                error.response?.data ||
+                error.message
+            );
+
+            const lower =
+                trimmedValue.toLowerCase();
+
+            const fallback =
+                books.filter((book) => {
+                    const title =
+                        String(
+                            book.title || ""
+                        ).toLowerCase();
+
+                    const author =
+                        String(
+                            getBookAuthor(book)
+                        ).toLowerCase();
+
+                    const isbn =
+                        String(
+                            book.isbn || ""
+                        ).toLowerCase();
+
+                    return (
+                        title.startsWith(
+                            lower
+                        ) ||
+                        author.startsWith(
+                            lower
+                        ) ||
+                        isbn.startsWith(
+                            lower
+                        )
+                    );
+                });
+
+            setSuggestions(
+                fallback.slice(0, 6)
+            );
+        }
     };
 
     // =========================
-    // CLEAR SEARCH
+    // SEARCH CHANGE
     // =========================
 
-    const handleClearSearch = () => {
+    const handleSearchChange = (
+        event
+    ) => {
+        const value =
+            event.target.value;
+
+        setSearch(value);
+        setShowSuggestions(true);
+
+        if (searchTimerRef.current) {
+            clearTimeout(
+                searchTimerRef.current
+            );
+        }
+
+        if (
+            value.trim().length < 2
+        ) {
+            setSuggestions([]);
+            return;
+        }
+
+        searchTimerRef.current =
+            setTimeout(() => {
+                fetchSearchSuggestions(
+                    value
+                );
+            }, 300);
+    };
+
+    // =========================
+    // SAVE RECENT SEARCH
+    // =========================
+
+    const saveRecentSearch = (
+        value
+    ) => {
+        const trimmed =
+            value.trim();
+
+        if (!trimmed) {
+            return;
+        }
+
+        const storageKey =
+            getRecentSearchStorageKey();
+
+        if (!storageKey) {
+            return;
+        }
+
+        const updated = [
+            trimmed,
+            ...recentSearches.filter(
+                (item) =>
+                    item.toLowerCase() !==
+                    trimmed.toLowerCase()
+            ),
+        ].slice(0, 5);
+
+        setRecentSearches(updated);
+
+        localStorage.setItem(
+            storageKey,
+            JSON.stringify(updated)
+        );
+    };
+
+    // =========================
+    // SEARCH SUBMIT
+    // =========================
+
+    const handleSearch = (
+        event
+    ) => {
+        event.preventDefault();
+
+        saveRecentSearch(search);
+
+        setShowSuggestions(false);
+
+        fetchBooks(
+            buildBookUrl(
+                search,
+                ordering,
+                selectedAuthor,
+                selectedCategory
+            )
+        );
+    };
+
+    // =========================
+    // SELECT SUGGESTION
+    // =========================
+
+    const handleSuggestionClick = (
+        book
+    ) => {
+        const title =
+            book.title || "";
+
+        setSearch(title);
+
+        saveRecentSearch(title);
+
+        setShowSuggestions(false);
+
+        fetchBooks(
+            buildBookUrl(
+                title,
+                ordering,
+                selectedAuthor,
+                selectedCategory
+            )
+        );
+    };
+
+    // =========================
+    // SELECT RECENT SEARCH
+    // =========================
+
+    const handleRecentSearchClick = (
+        term
+    ) => {
+        setSearch(term);
+
+        setShowSuggestions(false);
+
+        saveRecentSearch(term);
+
+        fetchBooks(
+            buildBookUrl(
+                term,
+                ordering,
+                selectedAuthor,
+                selectedCategory
+            )
+        );
+    };
+
+    // =========================
+    // CLEAR RECENT SEARCHES
+    // =========================
+
+    const clearRecentSearches = () => {
+        setRecentSearches([]);
+
+        const storageKey =
+            getRecentSearchStorageKey();
+
+        if (!storageKey) {
+            return;
+        }
+
+        localStorage.removeItem(
+            storageKey
+        );
+    };
+
+    // =========================
+    // CLEAR FILTERS
+    // =========================
+
+    const handleClearFilters = () => {
         setSearch("");
         setOrdering("");
+        setSelectedAuthor("");
+        setSelectedCategory("");
 
-        /*
-         * Directly fetch the default books list.
-         */
+        setSuggestions([]);
+        setShowSuggestions(false);
+
         fetchBooks("books/");
     };
 
     // =========================
-    // FORM HANDLING
+    // FILTER CHANGE
     // =========================
 
-    const handleChange = (event) => {
+    const handleFilterChange = (
+        filterName,
+        value
+    ) => {
+        let nextSearch = search;
+        let nextOrdering = ordering;
+        let nextAuthor = selectedAuthor;
+        let nextCategory =
+            selectedCategory;
+
+        if (filterName === "author") {
+            nextAuthor = value;
+            setSelectedAuthor(value);
+        }
+
+        if (filterName === "category") {
+            nextCategory = value;
+            setSelectedCategory(value);
+        }
+
+        if (filterName === "ordering") {
+            nextOrdering = value;
+            setOrdering(value);
+        }
+
+        const url = buildBookUrl(
+            nextSearch,
+            nextOrdering,
+            nextAuthor,
+            nextCategory
+        );
+
+        fetchBooks(url);
+    };
+
+    // =========================
+    // FORM CHANGE
+    // =========================
+
+    const handleChange = (
+        event
+    ) => {
         const {
             name,
-            value
+            value,
+            files,
         } = event.target;
+
+        if (name === "cover") {
+            const file =
+                files?.[0] || null;
+
+            setFormData((previous) => ({
+                ...previous,
+                cover: file,
+            }));
+
+            if (file) {
+                const previewUrl =
+                    URL.createObjectURL(
+                        file
+                    );
+
+                setCoverPreview(
+                    previewUrl
+                );
+            } else {
+                setCoverPreview("");
+            }
+
+            return;
+        }
 
         setFormData((previous) => ({
             ...previous,
@@ -253,8 +921,11 @@ function Books() {
             author: "",
             isbn: "",
             quantity: "",
+            category: "",
+            cover: null,
         });
 
+        setCoverPreview("");
         setFormError("");
         setShowModal(true);
     };
@@ -263,15 +934,33 @@ function Books() {
     // OPEN EDIT MODAL
     // =========================
 
-    const handleEditBook = (book) => {
+    const handleEditBook = (
+        book
+    ) => {
         setEditingBook(book);
 
         setFormData({
-            title: book.title || "",
-            author: book.author || "",
-            isbn: book.isbn || "",
-            quantity: book.quantity ?? "",
+            title:
+                book.title || "",
+
+            author:
+                getBookAuthorId(book),
+
+            isbn:
+                book.isbn || "",
+
+            quantity:
+                book.quantity ?? "",
+
+            category:
+                getBookCategoryId(book),
+
+            cover: null,
         });
+
+        setCoverPreview(
+            getCoverUrl(book)
+        );
 
         setFormError("");
         setShowModal(true);
@@ -289,18 +978,29 @@ function Books() {
         setShowModal(false);
         setEditingBook(null);
         setFormError("");
+        setCoverPreview("");
+
+        setFormData({
+            title: "",
+            author: "",
+            isbn: "",
+            quantity: "",
+            category: "",
+            cover: null,
+        });
     };
 
     // =========================
     // ADD / EDIT BOOK
     // =========================
 
-    const handleSubmit = async (event) => {
+    const handleSubmit = async (
+        event
+    ) => {
         event.preventDefault();
 
         setFormError("");
 
-        // Frontend validation
         if (
             !formData.title.trim() ||
             !formData.author ||
@@ -308,7 +1008,7 @@ function Books() {
             formData.quantity === ""
         ) {
             setFormError(
-                "Please fill in all fields."
+                "Please fill in all required fields."
             );
 
             return;
@@ -324,19 +1024,52 @@ function Books() {
             return;
         }
 
-        const bookData = {
-            title: formData.title.trim(),
+        // =========================
+        // FORM DATA FOR MULTIPART
+        // =========================
 
-            author: Number(
+        const bookData =
+            new FormData();
+
+        bookData.append(
+            "title",
+            formData.title.trim()
+        );
+
+        bookData.append(
+            "author",
+            String(
                 formData.author
-            ),
+            )
+        );
 
-            isbn: formData.isbn.trim(),
+        bookData.append(
+            "isbn",
+            formData.isbn.trim()
+        );
 
-            quantity: Number(
-                formData.quantity
-            ),
-        };
+        bookData.append(
+            "quantity",
+            String(
+                Number(formData.quantity)
+            )
+        );
+
+        if (formData.category) {
+            bookData.append(
+                "category",
+                String(
+                    formData.category
+                )
+            );
+        }
+
+        if (formData.cover) {
+            bookData.append(
+                "cover",
+                formData.cover
+            );
+        }
 
         try {
             setSaving(true);
@@ -344,24 +1077,29 @@ function Books() {
             if (editingBook) {
                 await api.put(
                     `books/${editingBook.id}/`,
-                    bookData
+                    bookData,
+                    {
+                        headers: {
+                            "Content-Type":
+                                "multipart/form-data",
+                        },
+                    }
                 );
-            }
-
-            else {
+            } else {
                 await api.post(
                     "books/",
-                    bookData
+                    bookData,
+                    {
+                        headers: {
+                            "Content-Type":
+                                "multipart/form-data",
+                        },
+                    }
                 );
             }
 
-            setShowModal(false);
-            setEditingBook(null);
+            closeModal();
 
-            /*
-             * Reload current search results
-             * from the first page.
-             */
             await fetchBooks();
 
         } catch (error) {
@@ -389,7 +1127,9 @@ function Books() {
     // DELETE BOOK
     // =========================
 
-    const handleDeleteBook = async (book) => {
+    const handleDeleteBook = async (
+        book
+    ) => {
         const confirmed =
             window.confirm(
                 `Are you sure you want to delete "${book.title}"?`
@@ -431,16 +1171,79 @@ function Books() {
     // =========================
 
     const handleNextPage = () => {
-        if (nextPage) {
+        if (
+            nextPage &&
+            !loading
+        ) {
             fetchBooks(nextPage);
         }
     };
 
     const handlePreviousPage = () => {
-        if (previousPage) {
+        if (
+            previousPage &&
+            !loading
+        ) {
             fetchBooks(previousPage);
         }
     };
+
+    // =========================
+    // LOCAL SUGGESTIONS
+    // =========================
+
+    const localSuggestions =
+        useMemo(() => {
+            if (
+                search.trim().length < 2
+            ) {
+                return [];
+            }
+
+            const lower =
+                search.trim().toLowerCase();
+
+            return books
+                .filter((book) => {
+                    const title =
+                        String(
+                            book.title || ""
+                        ).toLowerCase();
+
+                    const author =
+                        String(
+                            getBookAuthor(book)
+                        ).toLowerCase();
+
+                    const isbn =
+                        String(
+                            book.isbn || ""
+                        ).toLowerCase();
+
+                    return (
+                        title.startsWith(
+                            lower
+                        ) ||
+                        author.startsWith(
+                            lower
+                        ) ||
+                        isbn.startsWith(
+                            lower
+                        )
+                    );
+                })
+                .slice(0, 6);
+        }, [books, search]);
+
+    const displayedSuggestions =
+        suggestions.length > 0
+            ? suggestions
+            : localSuggestions;
+
+    const showRecent =
+        showSuggestions &&
+        search.trim().length === 0 &&
+        recentSearches.length > 0;
 
     // =========================
     // UI
@@ -450,32 +1253,48 @@ function Books() {
         <div className="container py-4">
 
             {/* =========================
-                PAGE HEADER
+                HEADER
             ========================== */}
 
-            <div className="d-flex justify-content-between align-items-center mb-4">
+            <div className="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 mb-4">
 
                 <div>
-                    <h1 className="fw-bold mb-1">
-                        📚 Books
-                    </h1>
+
+                    <div className="d-flex align-items-center gap-2 mb-2">
+
+                        <span
+                            className="fs-2"
+                            aria-hidden="true"
+                        >
+                            📚
+                        </span>
+
+                        <h1 className="fw-bold mb-0">
+                            Library Books
+                        </h1>
+
+                    </div>
 
                     <p className="text-muted mb-0">
-                        Browse and manage the books
-                        available in the library.
+                        Discover, search and explore
+                        the books available in your
+                        library.
                     </p>
+
                 </div>
 
                 <div className="d-flex align-items-center gap-2 flex-wrap">
 
-                    <span className="badge bg-primary fs-6">
+                    <span className="badge bg-primary rounded-pill px-3 py-2">
                         {books.length} Books
                     </span>
 
                     {canManageBooks && (
                         <button
-                            className="btn btn-primary"
-                            onClick={handleAddBook}
+                            className="btn btn-primary px-3"
+                            onClick={
+                                handleAddBook
+                            }
                         >
                             + Add Book
                         </button>
@@ -486,53 +1305,454 @@ function Books() {
             </div>
 
             {/* =========================
-                SEARCH + SORT
+                SEARCH HERO
+            ========================== */}
+
+            <div className="card border-0 shadow-sm mb-4 overflow-visible">
+
+                <div className="card-body p-4">
+
+                    <div className="mb-3">
+
+                        <h5 className="fw-bold mb-1">
+                            Find your next book 🔎
+                        </h5>
+
+                        <p className="text-muted small mb-0">
+                            Search by title, author or
+                            ISBN. Start typing to see
+                            suggestions.
+                        </p>
+
+                    </div>
+
+                    <form
+                        onSubmit={
+                            handleSearch
+                        }
+                    >
+
+                        <div
+                            className="position-relative"
+                            ref={
+                                searchContainerRef
+                            }
+                        >
+
+                            <div className="input-group input-group-lg">
+
+                                <span className="input-group-text bg-white">
+                                    🔍
+                                </span>
+
+                                <input
+                                    type="text"
+                                    className="form-control border-start-0"
+                                    placeholder="Search books, authors or ISBN..."
+                                    value={
+                                        search
+                                    }
+                                    onChange={
+                                        handleSearchChange
+                                    }
+                                    onFocus={() =>
+                                        setShowSuggestions(
+                                            true
+                                        )
+                                    }
+                                />
+
+                                {search && (
+                                    <button
+                                        type="button"
+                                        className="btn btn-light border"
+                                        onClick={() => {
+                                            setSearch(
+                                                ""
+                                            );
+                                            setSuggestions(
+                                                []
+                                            );
+                                        }}
+                                    >
+                                        ✕
+                                    </button>
+                                )}
+
+                                <button
+                                    type="submit"
+                                    className="btn btn-primary px-4"
+                                >
+                                    Search
+                                </button>
+
+                            </div>
+
+                            {/* SEARCH DROPDOWN */}
+
+                            {showSuggestions &&
+                                (
+                                    displayedSuggestions.length >
+                                        0 ||
+                                    showRecent
+                                ) && (
+
+                                    <div
+                                        className="position-absolute bg-white border rounded-3 shadow w-100 mt-2"
+                                        style={{
+                                            zIndex: 1050,
+                                            maxHeight:
+                                                "420px",
+                                            overflowY:
+                                                "auto",
+                                        }}
+                                    >
+
+                                        {showRecent ? (
+
+                                            <>
+
+                                                <div className="d-flex justify-content-between align-items-center px-3 py-2 border-bottom">
+
+                                                    <small className="fw-bold text-muted">
+                                                        🕘 Recent searches
+                                                    </small>
+
+                                                    <button
+                                                        type="button"
+                                                        className="btn btn-sm btn-link text-danger text-decoration-none"
+                                                        onClick={
+                                                            clearRecentSearches
+                                                        }
+                                                    >
+                                                        Clear
+                                                    </button>
+
+                                                </div>
+
+                                                {recentSearches.map(
+                                                    (
+                                                        term,
+                                                        index
+                                                    ) => (
+
+                                                        <button
+                                                            key={`${term}-${index}`}
+                                                            type="button"
+                                                            className="dropdown-item py-3 px-3"
+                                                            onClick={() =>
+                                                                handleRecentSearchClick(
+                                                                    term
+                                                                )
+                                                            }
+                                                        >
+
+                                                            <div className="d-flex align-items-center gap-2">
+
+                                                                <span>
+                                                                    🕘
+                                                                </span>
+
+                                                                <span>
+                                                                    {
+                                                                        term
+                                                                    }
+                                                                </span>
+
+                                                            </div>
+
+                                                        </button>
+
+                                                    )
+                                                )}
+
+                                            </>
+
+                                        ) : (
+
+                                            <>
+
+                                                <div className="px-3 py-2 border-bottom">
+
+                                                    <small className="fw-bold text-muted">
+                                                        📚 Book suggestions
+                                                    </small>
+
+                                                </div>
+
+                                                {displayedSuggestions.map(
+                                                    (
+                                                        book
+                                                    ) => {
+
+                                                        const available =
+                                                            getBookAvailable(
+                                                                book
+                                                            );
+
+                                                        return (
+                                                            <button
+                                                                type="button"
+                                                                key={
+                                                                    book.id
+                                                                }
+                                                                className="dropdown-item px-3 py-3"
+                                                                onClick={() =>
+                                                                    handleSuggestionClick(
+                                                                        book
+                                                                    )
+                                                                }
+                                                            >
+
+                                                                <div className="d-flex gap-3">
+
+                                                                    <div
+                                                                        className="d-flex align-items-center justify-content-center bg-primary-subtle rounded-3 flex-shrink-0 overflow-hidden"
+                                                                        style={{
+                                                                            width: "48px",
+                                                                            height: "64px",
+                                                                        }}
+                                                                    >
+
+                                                                        {getCoverUrl(
+                                                                            book
+                                                                        ) ? (
+
+                                                                            <img
+                                                                                src={getCoverUrl(
+                                                                                    book
+                                                                                )}
+                                                                                alt={
+                                                                                    book.title
+                                                                                }
+                                                                                className="w-100 h-100"
+                                                                                style={{
+                                                                                    objectFit:
+                                                                                        "cover",
+                                                                                }}
+                                                                            />
+
+                                                                        ) : (
+
+                                                                            <span>
+                                                                                📖
+                                                                            </span>
+
+                                                                        )}
+
+                                                                    </div>
+
+                                                                    <div className="flex-grow-1 text-start">
+
+                                                                        <div className="fw-bold text-dark">
+                                                                            {
+                                                                                book.title
+                                                                            }
+                                                                        </div>
+
+                                                                        <div className="small text-muted">
+                                                                            ✍️{" "}
+                                                                            {
+                                                                                getBookAuthor(
+                                                                                    book
+                                                                                )
+                                                                            }
+                                                                        </div>
+
+                                                                        <div className="small text-muted mt-1">
+                                                                            ISBN:{" "}
+                                                                            {
+                                                                                book.isbn ||
+                                                                                "N/A"
+                                                                            }
+                                                                        </div>
+
+                                                                        <div className="mt-1">
+
+                                                                            <span
+                                                                                className={`badge ${
+                                                                                    available >
+                                                                                    0
+                                                                                        ? "bg-success"
+                                                                                        : "bg-danger"
+                                                                                }`}
+                                                                            >
+                                                                                {available >
+                                                                                0
+                                                                                    ? `${available} available`
+                                                                                    : "Currently unavailable"}
+                                                                            </span>
+
+                                                                        </div>
+
+                                                                    </div>
+
+                                                                </div>
+
+                                                            </button>
+                                                        );
+                                                    }
+                                                )}
+
+                                            </>
+
+                                        )}
+
+                                    </div>
+
+                                )}
+
+                        </div>
+
+                    </form>
+
+                </div>
+
+            </div>
+
+            {/* =========================
+                FILTERS
             ========================== */}
 
             <div className="card border-0 shadow-sm mb-4">
 
                 <div className="card-body">
 
-                    <form
-                        onSubmit={handleSearch}
-                        className="row g-3"
-                    >
+                    <div className="row g-3">
 
-                        {/* Search */}
+                        {/* CATEGORY */}
 
-                        <div className="col-md-6">
+                        <div className="col-md-4">
 
                             <label className="form-label fw-semibold">
-                                🔍 Search Books
-                            </label>
-
-                            <input
-                                type="text"
-                                className="form-control"
-                                placeholder="Search by title, ISBN or author..."
-                                value={search}
-                                onChange={(event) =>
-                                    setSearch(
-                                        event.target.value
-                                    )
-                                }
-                            />
-
-                        </div>
-
-                        {/* Ordering */}
-
-                        <div className="col-md-3">
-
-                            <label className="form-label fw-semibold">
-                                ↕️ Sort By
+                                🏷️ Category
                             </label>
 
                             <select
                                 className="form-select"
-                                value={ordering}
+                                value={
+                                    selectedCategory
+                                }
                                 onChange={(event) =>
-                                    setOrdering(
+                                    handleFilterChange(
+                                        "category",
+                                        event.target.value
+                                    )
+                                }
+                            >
+
+                                <option value="">
+                                    All Categories
+                                </option>
+
+                                {categories.map(
+                                    (category) => (
+
+                                        <option
+                                            key={
+                                                category.id
+                                            }
+                                            value={
+                                                category.id
+                                            }
+                                        >
+                                            {
+                                                category.name
+                                            }
+                                        </option>
+
+                                    )
+                                )}
+
+                            </select>
+
+                            {categories.length >
+                                0 && (
+                                <small className="text-muted">
+                                    {categories.length} categories loaded
+                                </small>
+                            )}
+
+                            {categories.length ===
+                                0 && (
+                                <small className="text-danger">
+                                    No categories available.
+                                </small>
+                            )}
+
+                        </div>
+
+                        {/* AUTHOR */}
+
+                        <div className="col-md-4">
+
+                            <label className="form-label fw-semibold">
+                                ✍️ Author
+                            </label>
+
+                            <select
+                                className="form-select"
+                                value={
+                                    selectedAuthor
+                                }
+                                onChange={(event) =>
+                                    handleFilterChange(
+                                        "author",
+                                        event.target.value
+                                    )
+                                }
+                            >
+
+                                <option value="">
+                                    All Authors
+                                </option>
+
+                                {authors.map(
+                                    (author) => (
+
+                                        <option
+                                            key={
+                                                author.id
+                                            }
+                                            value={
+                                                author.id
+                                            }
+                                        >
+                                            {
+                                                author.name
+                                            }
+                                        </option>
+
+                                    )
+                                )}
+
+                            </select>
+
+                            {authors.length >
+                                0 && (
+                                <small className="text-muted">
+                                    {authors.length} authors loaded
+                                </small>
+                            )}
+
+                        </div>
+
+                        {/* ORDERING */}
+
+                        <div className="col-md-4">
+
+                            <label className="form-label fw-semibold">
+                                ↕️ Sort Books
+                            </label>
+
+                            <select
+                                className="form-select"
+                                value={
+                                    ordering
+                                }
+                                onChange={(event) =>
+                                    handleFilterChange(
+                                        "ordering",
                                         event.target.value
                                     )
                                 }
@@ -570,32 +1790,32 @@ function Books() {
 
                         </div>
 
-                        {/* Buttons */}
+                    </div>
 
-                        <div className="col-md-3 d-flex align-items-end gap-2">
+                    {(search ||
+                        ordering ||
+                        selectedAuthor ||
+                        selectedCategory) && (
+
+                        <div className="d-flex justify-content-between align-items-center mt-3 pt-3 border-top">
+
+                            <small className="text-muted">
+                                Filters are active
+                            </small>
 
                             <button
-                                type="submit"
-                                className="btn btn-primary flex-grow-1"
+                                type="button"
+                                className="btn btn-sm btn-outline-secondary"
+                                onClick={
+                                    handleClearFilters
+                                }
                             >
-                                🔍 Search
+                                Clear all filters
                             </button>
-
-                            {(search || ordering) && (
-                                <button
-                                    type="button"
-                                    className="btn btn-outline-secondary"
-                                    onClick={
-                                        handleClearSearch
-                                    }
-                                >
-                                    Clear
-                                </button>
-                            )}
 
                         </div>
 
-                    </form>
+                    )}
 
                 </div>
 
@@ -607,7 +1827,7 @@ function Books() {
 
             {error && (
                 <div
-                    className="alert alert-danger"
+                    className="alert alert-danger border-0 shadow-sm"
                     role="alert"
                 >
 
@@ -615,7 +1835,7 @@ function Books() {
                         Unable to complete request
                     </h6>
 
-                    <pre className="mb-0 text-danger">
+                    <pre className="mb-0 text-danger small">
                         {error}
                     </pre>
 
@@ -648,7 +1868,7 @@ function Books() {
                     </div>
 
                     <p className="text-muted mt-3 mb-0">
-                        Loading books...
+                        Finding books...
                     </p>
 
                 </div>
@@ -666,23 +1886,40 @@ function Books() {
 
                         <div className="card-body text-center py-5">
 
-                            <div className="fs-1 mb-3">
+                            <div className="display-4 mb-3">
                                 📚
                             </div>
 
-                            <h5 className="fw-bold">
+                            <h4 className="fw-bold">
                                 No books found
-                            </h5>
+                            </h4>
 
-                            <p className="text-muted mb-3">
-                                No books match your
-                                current search.
+                            <p className="text-muted mb-4">
+                                Try changing your search
+                                or filters.
                             </p>
+
+                            {(search ||
+                                ordering ||
+                                selectedAuthor ||
+                                selectedCategory) && (
+
+                                <button
+                                    className="btn btn-outline-primary me-2"
+                                    onClick={
+                                        handleClearFilters
+                                    }
+                                >
+                                    Clear Filters
+                                </button>
+                            )}
 
                             {canManageBooks && (
                                 <button
                                     className="btn btn-primary"
-                                    onClick={handleAddBook}
+                                    onClick={
+                                        handleAddBook
+                                    }
                                 >
                                     + Add First Book
                                 </button>
@@ -694,115 +1931,166 @@ function Books() {
                 )}
 
             {/* =========================
-                BOOK TABLE
+                BOOK CARDS
             ========================== */}
 
             {!loading &&
+                !error &&
                 books.length > 0 && (
 
                     <>
 
-                        <div className="card border-0 shadow-sm">
+                        <div className="d-flex justify-content-between align-items-center mb-3">
 
-                            <div className="card-body p-0">
+                            <div>
 
-                                <div className="table-responsive">
+                                <h5 className="fw-bold mb-1">
+                                    Available Books
+                                </h5>
 
-                                    <table className="table table-hover align-middle mb-0">
+                                <small className="text-muted">
+                                    Explore the library
+                                    collection
+                                </small>
 
-                                        <thead className="table-dark">
+                            </div>
 
-                                            <tr>
+                            <span className="text-muted small">
+                                Showing{" "}
+                                <strong>
+                                    {books.length}
+                                </strong>{" "}
+                                books
+                            </span>
 
-                                                <th>
-                                                    #
-                                                </th>
+                        </div>
 
-                                                <th>
-                                                    Title
-                                                </th>
+                        <div className="row g-4">
 
-                                                <th>
-                                                    Author
-                                                </th>
+                            {books.map(
+                                (book) => {
 
-                                                <th>
-                                                    ISBN
-                                                </th>
+                                    const available =
+                                        getBookAvailable(
+                                            book
+                                        );
 
-                                                <th>
-                                                    Quantity
-                                                </th>
+                                    const category =
+                                        getBookCategory(
+                                            book
+                                        );
 
-                                                <th>
-                                                    Available
-                                                </th>
+                                    const coverUrl =
+                                        getCoverUrl(
+                                            book
+                                        );
 
-                                                {canManageBooks && (
-                                                    <th>
-                                                        Actions
-                                                    </th>
-                                                )}
+                                    return (
+                                        <div
+                                            className="col-sm-6 col-lg-4 col-xl-3"
+                                            key={
+                                                book.id
+                                            }
+                                        >
 
-                                            </tr>
+                                            <div className="card h-100 border-0 shadow-sm overflow-hidden">
 
-                                        </thead>
+                                                {/* BOOK COVER */}
 
-                                        <tbody>
+                                                <div
+                                                    className="d-flex align-items-center justify-content-center bg-body-secondary"
+                                                    style={{
+                                                        height: "240px",
+                                                    }}
+                                                >
 
-                                            {books.map(
-                                                (
-                                                    book,
-                                                    index
-                                                ) => (
+                                                    {coverUrl ? (
 
-                                                    <tr
-                                                        key={
-                                                            book.id
-                                                        }
-                                                    >
+                                                        <img
+                                                            src={
+                                                                coverUrl
+                                                            }
+                                                            alt={
+                                                                book.title
+                                                            }
+                                                            className="w-100 h-100"
+                                                            style={{
+                                                                objectFit:
+                                                                    "cover",
+                                                            }}
+                                                        />
 
-                                                        {/* Number */}
+                                                    ) : (
 
-                                                        <td className="text-muted">
-                                                            {index + 1}
-                                                        </td>
+                                                        <div className="text-center">
 
-                                                        {/* Title */}
+                                                            <div className="display-4">
+                                                                📖
+                                                            </div>
 
-                                                        <td>
+                                                            <small className="text-muted">
+                                                                No cover available
+                                                            </small>
 
-                                                            <span className="fw-semibold">
+                                                        </div>
+
+                                                    )}
+
+                                                </div>
+
+                                                {/* BOOK CONTENT */}
+
+                                                <div className="card-body d-flex flex-column">
+
+                                                    {category && (
+                                                        <div className="mb-2">
+
+                                                            <span className="badge bg-primary-subtle text-primary">
+                                                                🏷️{" "}
                                                                 {
-                                                                    book.title
+                                                                    category
                                                                 }
                                                             </span>
 
-                                                        </td>
+                                                        </div>
+                                                    )}
 
-                                                        {/* Author */}
+                                                    <h5 className="fw-bold mb-2">
+                                                        {
+                                                            book.title
+                                                        }
+                                                    </h5>
 
-                                                        <td>
-                                                            {
-                                                                book.author_name
-                                                            }
-                                                        </td>
+                                                    <p className="text-muted mb-2">
+                                                        ✍️{" "}
+                                                        {
+                                                            getBookAuthor(
+                                                                book
+                                                            )
+                                                        }
+                                                    </p>
 
-                                                        {/* ISBN */}
+                                                    <div className="small text-muted mb-3">
 
-                                                        <td>
-
+                                                        <div>
+                                                            ISBN:{" "}
                                                             <span className="font-monospace">
                                                                 {
-                                                                    book.isbn
+                                                                    book.isbn ||
+                                                                    "N/A"
                                                                 }
                                                             </span>
+                                                        </div>
 
-                                                        </td>
+                                                    </div>
 
-                                                        {/* Quantity */}
+                                                    <div className="mt-auto">
 
-                                                        <td>
+                                                        <div className="d-flex justify-content-between align-items-center mb-3">
+
+                                                            <span className="small text-muted">
+                                                                Total copies
+                                                            </span>
 
                                                             <span className="badge bg-secondary">
                                                                 {
@@ -810,93 +2098,80 @@ function Books() {
                                                                 }
                                                             </span>
 
-                                                        </td>
+                                                        </div>
 
-                                                        {/* Available */}
+                                                        <div className="d-flex justify-content-between align-items-center mb-3">
 
-                                                        <td>
+                                                            <span className="small text-muted">
+                                                                Availability
+                                                            </span>
 
-                                                            {book.available >
-                                                            0 ? (
-
-                                                                <span className="badge bg-success">
-                                                                    {
-                                                                        book.available
-                                                                    }
-                                                                </span>
-
-                                                            ) : (
-
-                                                                <span className="badge bg-danger">
+                                                            <span
+                                                                className={`badge rounded-pill ${
+                                                                    available >
                                                                     0
-                                                                </span>
+                                                                        ? "bg-success"
+                                                                        : "bg-danger"
+                                                                }`}
+                                                            >
+                                                                {available >
+                                                                0
+                                                                    ? `${available} available`
+                                                                    : "Unavailable"}
+                                                            </span>
 
-                                                            )}
-
-                                                        </td>
-
-                                                        {/* Actions */}
+                                                        </div>
 
                                                         {canManageBooks && (
+                                                            <div className="d-flex gap-2">
 
-                                                            <td>
+                                                                <button
+                                                                    className="btn btn-sm btn-outline-primary flex-grow-1"
+                                                                    onClick={() =>
+                                                                        handleEditBook(
+                                                                            book
+                                                                        )
+                                                                    }
+                                                                >
+                                                                    ✏️ Edit
+                                                                </button>
 
-                                                                <div className="d-flex gap-2">
+                                                                <button
+                                                                    className="btn btn-sm btn-outline-danger"
+                                                                    onClick={() =>
+                                                                        handleDeleteBook(
+                                                                            book
+                                                                        )
+                                                                    }
+                                                                >
+                                                                    🗑️
+                                                                </button>
 
-                                                                    <button
-                                                                        className="btn btn-sm btn-outline-primary"
-                                                                        onClick={() =>
-                                                                            handleEditBook(
-                                                                                book
-                                                                            )
-                                                                        }
-                                                                    >
-                                                                        ✏️ Edit
-                                                                    </button>
-
-                                                                    <button
-                                                                        className="btn btn-sm btn-outline-danger"
-                                                                        onClick={() =>
-                                                                            handleDeleteBook(
-                                                                                book
-                                                                            )
-                                                                        }
-                                                                    >
-                                                                        🗑️ Delete
-                                                                    </button>
-
-                                                                </div>
-
-                                                            </td>
-
+                                                            </div>
                                                         )}
 
-                                                    </tr>
+                                                    </div>
 
-                                                )
-                                            )}
+                                                </div>
 
-                                        </tbody>
+                                            </div>
 
-                                    </table>
-
-                                </div>
-
-                            </div>
+                                        </div>
+                                    );
+                                }
+                            )}
 
                         </div>
 
-                        {/* =========================
-                            PAGINATION
-                        ========================== */}
+                        {/* PAGINATION */}
 
                         {(previousPage ||
                             nextPage) && (
 
-                            <div className="d-flex justify-content-between align-items-center mt-4">
+                            <div className="d-flex justify-content-between align-items-center mt-5">
 
                                 <button
-                                    className="btn btn-outline-primary"
+                                    className="btn btn-outline-primary px-4"
                                     disabled={
                                         !previousPage ||
                                         loading
@@ -908,12 +2183,21 @@ function Books() {
                                     ← Previous
                                 </button>
 
-                                <span className="text-muted">
-                                    Page navigation
-                                </span>
+                                <div className="text-center">
+
+                                    <div className="fw-semibold">
+                                        Browse more books
+                                    </div>
+
+                                    <small className="text-muted">
+                                        Use the buttons to
+                                        navigate pages
+                                    </small>
+
+                                </div>
 
                                 <button
-                                    className="btn btn-outline-primary"
+                                    className="btn btn-outline-primary px-4"
                                     disabled={
                                         !nextPage ||
                                         loading
@@ -942,23 +2226,33 @@ function Books() {
                     className="modal fade show d-block"
                     tabIndex="-1"
                     role="dialog"
+                    style={{
+                        zIndex: 1060,
+                    }}
                 >
 
-                    <div className="modal-dialog modal-dialog-centered">
+                    <div className="modal-dialog modal-dialog-centered modal-lg">
 
-                        <div className="modal-content">
-
-                            {/* Modal Header */}
+                        <div className="modal-content border-0 shadow">
 
                             <div className="modal-header">
 
-                                <h5 className="modal-title fw-bold">
+                                <div>
 
-                                    {editingBook
-                                        ? "✏️ Edit Book"
-                                        : "📚 Add Book"}
+                                    <h5 className="modal-title fw-bold mb-1">
 
-                                </h5>
+                                        {editingBook
+                                            ? "✏️ Edit Book"
+                                            : "📚 Add New Book"}
+
+                                    </h5>
+
+                                    <small className="text-muted">
+                                        Enter the book information
+                                        below.
+                                    </small>
+
+                                </div>
 
                                 <button
                                     type="button"
@@ -966,11 +2260,9 @@ function Books() {
                                     onClick={
                                         closeModal
                                     }
-                                ></button>
+                                />
 
                             </div>
-
-                            {/* Form */}
 
                             <form
                                 onSubmit={
@@ -978,145 +2270,283 @@ function Books() {
                                 }
                             >
 
-                                <div className="modal-body">
-
-                                    {/* Form Error */}
+                                <div
+                                    className="modal-body"
+                                    style={{
+                                        maxHeight:
+                                            "75vh",
+                                        overflowY:
+                                            "auto",
+                                    }}
+                                >
 
                                     {formError && (
-
                                         <div className="alert alert-danger">
 
-                                            <pre className="mb-0">
+                                            <pre className="mb-0 small">
                                                 {
                                                     formError
                                                 }
                                             </pre>
 
                                         </div>
-
                                     )}
 
-                                    {/* Title */}
+                                    <div className="row g-3">
 
-                                    <div className="mb-3">
+                                        {/* TITLE */}
 
-                                        <label className="form-label fw-semibold">
-                                            Book Title
-                                        </label>
+                                        <div className="col-12">
 
-                                        <input
-                                            type="text"
-                                            name="title"
-                                            className="form-control"
-                                            value={
-                                                formData.title
-                                            }
-                                            onChange={
-                                                handleChange
-                                            }
-                                            placeholder="Enter book title"
-                                        />
+                                            <label className="form-label fw-semibold">
+                                                Book Title
+                                            </label>
 
-                                    </div>
+                                            <input
+                                                type="text"
+                                                name="title"
+                                                className="form-control"
+                                                value={
+                                                    formData.title
+                                                }
+                                                onChange={
+                                                    handleChange
+                                                }
+                                                placeholder="Enter book title"
+                                            />
 
-                                    {/* Author */}
+                                        </div>
 
-                                    <div className="mb-3">
+                                        {/* AUTHOR */}
 
-                                        <label className="form-label fw-semibold">
-                                            Author
-                                        </label>
+                                        <div className="col-md-6">
 
-                                        <select
-                                            name="author"
-                                            className="form-select"
-                                            value={
-                                                formData.author
-                                            }
-                                            onChange={
-                                                handleChange
-                                            }
-                                        >
+                                            <label className="form-label fw-semibold">
+                                                Author
+                                            </label>
 
-                                            <option value="">
-                                                Select an author
-                                            </option>
+                                            <select
+                                                name="author"
+                                                className="form-select"
+                                                value={
+                                                    formData.author
+                                                }
+                                                onChange={
+                                                    handleChange
+                                                }
+                                                style={{
+                                                    maxHeight:
+                                                        "180px",
+                                                }}
+                                            >
 
-                                            {authors.map(
-                                                (
-                                                    author
-                                                ) => (
+                                                <option value="">
+                                                    Select an author
+                                                </option>
 
-                                                    <option
-                                                        key={
-                                                            author.id
-                                                        }
-                                                        value={
-                                                            author.id
-                                                        }
-                                                    >
-                                                        {
-                                                            author.name
-                                                        }
-                                                    </option>
+                                                {authors.map(
+                                                    (
+                                                        author
+                                                    ) => (
 
-                                                )
+                                                        <option
+                                                            key={
+                                                                author.id
+                                                            }
+                                                            value={
+                                                                author.id
+                                                            }
+                                                        >
+                                                            {
+                                                                author.name
+                                                            }
+                                                        </option>
+
+                                                    )
+                                                )}
+
+                                            </select>
+
+                                            <small className="text-muted">
+                                                {authors.length} authors available
+                                            </small>
+
+                                        </div>
+
+                                        {/* CATEGORY */}
+
+                                        <div className="col-md-6">
+
+                                            <label className="form-label fw-semibold">
+                                                Category
+                                            </label>
+
+                                            <select
+                                                name="category"
+                                                className="form-select"
+                                                value={
+                                                    formData.category
+                                                }
+                                                onChange={
+                                                    handleChange
+                                                }
+                                                style={{
+                                                    maxHeight:
+                                                        "180px",
+                                                }}
+                                            >
+
+                                                <option value="">
+                                                    Select a category
+                                                </option>
+
+                                                {categories.map(
+                                                    (
+                                                        category
+                                                    ) => (
+
+                                                        <option
+                                                            key={
+                                                                category.id
+                                                            }
+                                                            value={
+                                                                category.id
+                                                            }
+                                                        >
+                                                            {
+                                                                category.name
+                                                            }
+                                                        </option>
+
+                                                    )
+                                                )}
+
+                                            </select>
+
+                                            {categories.length >
+                                                0 && (
+                                                <small className="text-muted">
+                                                    {categories.length} categories available
+                                                </small>
                                             )}
 
-                                        </select>
+                                            {categories.length ===
+                                                0 && (
+                                                <small className="text-danger">
+                                                    No categories available.
+                                                </small>
+                                            )}
 
-                                    </div>
+                                        </div>
 
-                                    {/* ISBN */}
+                                        {/* ISBN */}
 
-                                    <div className="mb-3">
+                                        <div className="col-md-8">
 
-                                        <label className="form-label fw-semibold">
-                                            ISBN
-                                        </label>
+                                            <label className="form-label fw-semibold">
+                                                ISBN
+                                            </label>
 
-                                        <input
-                                            type="text"
-                                            name="isbn"
-                                            className="form-control"
-                                            value={
-                                                formData.isbn
-                                            }
-                                            onChange={
-                                                handleChange
-                                            }
-                                            placeholder="Enter ISBN"
-                                        />
+                                            <input
+                                                type="text"
+                                                name="isbn"
+                                                className="form-control"
+                                                value={
+                                                    formData.isbn
+                                                }
+                                                onChange={
+                                                    handleChange
+                                                }
+                                                placeholder="Enter ISBN"
+                                            />
 
-                                    </div>
+                                        </div>
 
-                                    {/* Quantity */}
+                                        {/* QUANTITY */}
 
-                                    <div className="mb-3">
+                                        <div className="col-md-4">
 
-                                        <label className="form-label fw-semibold">
-                                            Quantity
-                                        </label>
+                                            <label className="form-label fw-semibold">
+                                                Quantity
+                                            </label>
 
-                                        <input
-                                            type="number"
-                                            name="quantity"
-                                            className="form-control"
-                                            min="0"
-                                            value={
-                                                formData.quantity
-                                            }
-                                            onChange={
-                                                handleChange
-                                            }
-                                            placeholder="Enter quantity"
-                                        />
+                                            <input
+                                                type="number"
+                                                name="quantity"
+                                                className="form-control"
+                                                min="0"
+                                                value={
+                                                    formData.quantity
+                                                }
+                                                onChange={
+                                                    handleChange
+                                                }
+                                                placeholder="0"
+                                            />
+
+                                        </div>
+
+                                        {/* COVER UPLOAD */}
+
+                                        <div className="col-12">
+
+                                            <label className="form-label fw-semibold">
+                                                📕 Book Cover
+                                            </label>
+
+                                            <input
+                                                type="file"
+                                                name="cover"
+                                                className="form-control"
+                                                accept="image/*"
+                                                onChange={
+                                                    handleChange
+                                                }
+                                            />
+
+                                            <small className="text-muted">
+                                                Upload a JPG, PNG, WEBP or other image file.
+                                            </small>
+
+                                            {/* COVER PREVIEW */}
+
+                                            {coverPreview && (
+                                                <div className="mt-3">
+
+                                                    <div className="small fw-semibold mb-2">
+                                                        Cover Preview
+                                                    </div>
+
+                                                    <div
+                                                        className="border rounded-3 overflow-hidden bg-light d-flex align-items-center justify-content-center"
+                                                        style={{
+                                                            width: "150px",
+                                                            height: "210px",
+                                                        }}
+                                                    >
+
+                                                        <img
+                                                            src={
+                                                                coverPreview
+                                                            }
+                                                            alt="Book cover preview"
+                                                            className="w-100 h-100"
+                                                            style={{
+                                                                objectFit:
+                                                                    "cover",
+                                                            }}
+                                                        />
+
+                                                    </div>
+
+                                                </div>
+                                            )}
+
+                                        </div>
 
                                     </div>
 
                                 </div>
-
-                                {/* Modal Footer */}
 
                                 <div className="modal-footer">
 
@@ -1135,7 +2565,7 @@ function Books() {
 
                                     <button
                                         type="submit"
-                                        className="btn btn-primary"
+                                        className="btn btn-primary px-4"
                                         disabled={
                                             saving
                                         }
@@ -1144,12 +2574,14 @@ function Books() {
                                         {saving ? (
 
                                             <>
+
                                                 <span
                                                     className="spinner-border spinner-border-sm me-2"
                                                     role="status"
-                                                ></span>
+                                                />
 
                                                 Saving...
+
                                             </>
 
                                         ) : editingBook ? (
@@ -1176,12 +2608,15 @@ function Books() {
 
             )}
 
-            {/* =========================
-                MODAL BACKDROP
-            ========================== */}
+            {/* MODAL BACKDROP */}
 
             {showModal && (
-                <div className="modal-backdrop fade show"></div>
+                <div
+                    className="modal-backdrop fade show"
+                    style={{
+                        zIndex: 1055,
+                    }}
+                />
             )}
 
         </div>
