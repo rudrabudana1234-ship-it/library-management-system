@@ -10,6 +10,9 @@ from .models import (
     Loan,
     BookRequest,
     RecentSearch,
+    ReturnRequest,
+    Fee,
+    Payment,
 )
 
 
@@ -50,6 +53,7 @@ class AuthorSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Author
+
         fields = '__all__'
 
 
@@ -84,13 +88,15 @@ class BookSerializer(serializers.ModelSerializer):
         quantity = attrs.get(
             'quantity',
             self.instance.quantity
-            if self.instance else None
+            if self.instance
+            else None
         )
 
         available = attrs.get(
             'available',
             self.instance.available
-            if self.instance else None
+            if self.instance
+            else None
         )
 
         if (
@@ -98,18 +104,27 @@ class BookSerializer(serializers.ModelSerializer):
             and quantity is not None
             and available > quantity
         ):
+
             raise serializers.ValidationError({
                 'available':
                     'Available copies cannot be greater than total quantity.'
             })
 
-        if quantity is not None and quantity < 0:
+        if (
+            quantity is not None
+            and quantity < 0
+        ):
+
             raise serializers.ValidationError({
                 'quantity':
                     'Quantity cannot be negative.'
             })
 
-        if available is not None and available < 0:
+        if (
+            available is not None
+            and available < 0
+        ):
+
             raise serializers.ValidationError({
                 'available':
                     'Available copies cannot be negative.'
@@ -127,7 +142,11 @@ class BookSerializer(serializers.ModelSerializer):
             **validated_data
         )
 
-    def update(self, instance, validated_data):
+    def update(
+        self,
+        instance,
+        validated_data,
+    ):
 
         if 'quantity' in validated_data:
 
@@ -146,6 +165,7 @@ class BookSerializer(serializers.ModelSerializer):
             )
 
             if new_available < 0:
+
                 raise serializers.ValidationError({
                     'quantity':
                         f'Cannot reduce quantity below '
@@ -196,6 +216,51 @@ class MemberSerializer(serializers.ModelSerializer):
 
 
 # =========================================================
+# FEE SERIALIZER
+# =========================================================
+
+class FeeSerializer(serializers.ModelSerializer):
+
+    fee_type_display = serializers.CharField(
+        source='get_fee_type_display',
+        read_only=True
+    )
+
+    status_display = serializers.CharField(
+        source='get_status_display',
+        read_only=True
+    )
+
+    book_title = serializers.CharField(
+    source="loan.book.title",
+    read_only=True,
+   )
+
+    class Meta:
+        model = Fee
+
+        fields = [
+            'id',
+            'loan',
+            'book_title',
+            'fee_type',
+            'fee_type_display',
+            'amount',
+            'status',
+            'status_display',
+            'description',
+            'created_at',
+            'paid_at',
+        ]
+
+        read_only_fields = [
+            'id',
+            'created_at',
+            'paid_at',
+        ]
+
+
+# =========================================================
 # LOAN
 # =========================================================
 
@@ -241,6 +306,8 @@ class LoanSerializer(serializers.ModelSerializer):
         read_only=True
     )
 
+    total_fees = serializers.SerializerMethodField()
+
     class Meta:
         model = Loan
 
@@ -266,6 +333,113 @@ class LoanSerializer(serializers.ModelSerializer):
             'due_date',
             'return_date',
             'status',
+
+            # Fees
+            'total_fees',
+        ]
+
+        read_only_fields = [
+            'id',
+            'member',
+            'borrow_date',
+            'due_date',
+            'return_date',
+            'status',
+            'total_fees',
+        ]
+
+    def get_total_fees(self, obj):
+
+        return sum(
+            fee.amount
+            for fee in obj.fees.all()
+        )
+
+
+# =========================================================
+# RETURN REQUEST SERIALIZER
+# =========================================================
+
+class ReturnRequestSerializer(serializers.ModelSerializer):
+
+    loan_id = serializers.IntegerField(
+        source='loan.id',
+        read_only=True
+    )
+
+    book_title = serializers.CharField(
+        source='loan.book.title',
+        read_only=True
+    )
+
+    book_isbn = serializers.CharField(
+        source='loan.book.isbn',
+        read_only=True
+    )
+
+    member_name = serializers.CharField(
+        source='loan.member.name',
+        read_only=True
+    )
+
+    member_email = serializers.EmailField(
+        source='loan.member.email',
+        read_only=True
+    )
+
+    borrow_date = serializers.DateField(
+        source='loan.borrow_date',
+        read_only=True
+    )
+
+    due_date = serializers.DateField(
+        source='loan.due_date',
+        read_only=True
+    )
+
+    loan_status = serializers.CharField(
+        source='loan.status',
+        read_only=True
+    )
+
+    class Meta:
+        model = ReturnRequest
+
+        fields = [
+            'id',
+            'loan_id',
+
+            'book_title',
+            'book_isbn',
+
+            'member_name',
+            'member_email',
+
+            'borrow_date',
+            'due_date',
+            'loan_status',
+
+            'status',
+            'condition',
+            'damage_description',
+
+            'requested_at',
+            'processed_at',
+        ]
+
+        read_only_fields = [
+            'id',
+            'loan_id',
+            'book_title',
+            'book_isbn',
+            'member_name',
+            'member_email',
+            'borrow_date',
+            'due_date',
+            'loan_status',
+            'status',
+            'requested_at',
+            'processed_at',
         ]
 
 
@@ -280,8 +454,38 @@ class BookRequestSerializer(serializers.ModelSerializer):
         read_only=True
     )
 
+    book_isbn = serializers.CharField(
+        source='book.isbn',
+        read_only=True
+    )
+
+    book_author = serializers.CharField(
+        source='book.author.name',
+        read_only=True
+    )
+
+    book_category = serializers.CharField(
+        source='book.category.name',
+        read_only=True
+    )
+
+    book_available = serializers.IntegerField(
+        source='book.available',
+        read_only=True
+    )
+
     member_name = serializers.CharField(
         source='member.name',
+        read_only=True
+    )
+
+    member_email = serializers.EmailField(
+        source='member.email',
+        read_only=True
+    )
+
+    member_phone = serializers.CharField(
+        source='member.phone',
         read_only=True
     )
 
@@ -290,23 +494,44 @@ class BookRequestSerializer(serializers.ModelSerializer):
 
         fields = [
             'id',
+
+            # Member
             'member',
             'member_name',
+            'member_email',
+            'member_phone',
+
+            # Book
             'book',
             'book_title',
+            'book_isbn',
+            'book_author',
+            'book_category',
+            'book_available',
+
+            # Request
             'status',
             'requested_at',
-            'processed_at'
+            'processed_at',
         ]
 
         read_only_fields = [
             'id',
+
             'member',
             'member_name',
+            'member_email',
+            'member_phone',
+
             'book_title',
+            'book_isbn',
+            'book_author',
+            'book_category',
+            'book_available',
+
             'status',
             'requested_at',
-            'processed_at'
+            'processed_at',
         ]
 
 
@@ -330,4 +555,44 @@ class RecentSearchSerializer(
         read_only_fields = [
             "id",
             "searched_at",
+        ]
+
+class PaymentSerializer(serializers.ModelSerializer):
+
+    fee_type = serializers.CharField(
+        source="fee.fee_type",
+        read_only=True,
+    )
+
+    book_title = serializers.CharField(
+        source="fee.loan.book.title",
+        read_only=True,
+    )
+
+    class Meta:
+        model = Payment
+
+        fields = [
+            "id",
+            "fee",
+            "fee_type",
+            "book_title",
+            "amount",
+            "status",
+            "payment_method",
+            "transaction_id",
+            "gateway_order_id",
+            "gateway_payment_id",
+            "created_at",
+            "paid_at",
+        ]
+
+        read_only_fields = [
+            "id",
+            "status",
+            "transaction_id",
+            "gateway_order_id",
+            "gateway_payment_id",
+            "created_at",
+            "paid_at",
         ]

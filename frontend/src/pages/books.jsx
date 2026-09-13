@@ -13,6 +13,17 @@ function Books() {
     const [loading, setLoading] = useState(true);
 
     // =========================
+    // MEMBER BORROWING / REQUEST
+    // =========================
+
+    const [memberRequests, setMemberRequests] = useState([]);
+    const [memberRequestLoading, setMemberRequestLoading] = useState(false);
+
+    const [bookActionLoading, setBookActionLoading] = useState(null);
+    const [actionMessage, setActionMessage] = useState("");
+    const [actionError, setActionError] = useState("");
+
+    // =========================
     // PAGINATION
     // =========================
 
@@ -96,6 +107,9 @@ function Books() {
         user?.role === "admin" ||
         user?.role === "librarian";
 
+    const isMember =
+        user?.role === "member";
+
     // =========================
     // EXTRACT RESULTS
     // =========================
@@ -117,14 +131,6 @@ function Books() {
 
     // =========================
     // FETCH ALL PAGINATED DATA
-    // =========================
-    //
-    // Important:
-    // Categories and authors are paginated
-    // by Django REST Framework.
-    //
-    // This function keeps requesting every
-    // page until "next" becomes null.
     // =========================
 
     const fetchAllPages = async (initialUrl) => {
@@ -464,6 +470,179 @@ function Books() {
         }
     };
 
+    // =====================================================
+    // FETCH MEMBER BOOK REQUESTS
+    // =====================================================
+
+    const fetchMemberRequests = async () => {
+        if (!isMember) {
+            setMemberRequests([]);
+            return;
+        }
+
+        try {
+            setMemberRequestLoading(true);
+
+            const response =
+                await api.get(
+                    "book-requests/"
+                );
+
+            const results =
+                extractResults(
+                    response.data
+                );
+
+            setMemberRequests(results);
+
+        } catch (error) {
+            console.error(
+                "MEMBER REQUEST API ERROR:",
+                error.response?.data ||
+                error.message
+            );
+
+            setMemberRequests([]);
+
+        } finally {
+            setMemberRequestLoading(false);
+        }
+    };
+
+    // =====================================================
+    // CHECK WHETHER BOOK HAS PENDING REQUEST
+    // =====================================================
+
+    const hasPendingRequest = (bookId) => {
+        return memberRequests.some(
+            (bookRequest) =>
+                Number(bookRequest.book) ===
+                    Number(bookId) &&
+                bookRequest.status ===
+                    "pending"
+        );
+    };
+
+    // Get the latest request for a book.
+    const getBookRequestStatus = (bookId) => {
+        const request = memberRequests.find(
+            (bookRequest) =>
+                Number(bookRequest.book) ===
+                Number(bookId)
+        );
+
+        return request?.status || null;
+    };
+
+    // =====================================================
+    // MEMBER BORROW BOOK
+    // =====================================================
+
+    // Members do NOT receive a Loan immediately.
+    // Clicking "Borrow Book" creates a pending BookRequest.
+    // The librarian approves/rejects that request later.
+    const handleBorrowBook = async (book) => {
+        if (!isMember) {
+            return;
+        }
+
+        if (hasPendingRequest(book.id)) {
+            setActionError(
+                "You already have a pending request for this book."
+            );
+            return;
+        }
+
+        setActionMessage("");
+        setActionError("");
+        setBookActionLoading(
+            `borrow-${book.id}`
+        );
+
+        try {
+            const response =
+                await api.post(
+                    "book-requests/",
+                    {
+                        book: book.id,
+                    }
+                );
+
+            console.log(
+                "BOOK BORROW REQUEST RESPONSE:",
+                response.data
+            );
+
+            setActionMessage(
+                response.data?.message ||
+                "Borrowing request submitted successfully. Please wait for librarian approval."
+            );
+
+            // The request does not consume a copy.
+            // Refresh only the request state.
+            await fetchMemberRequests();
+
+        } catch (error) {
+            console.error(
+                "BOOK BORROW REQUEST ERROR:",
+                error.response?.data ||
+                error.message
+            );
+
+            const backendError =
+                error.response?.data;
+
+            if (backendError?.error) {
+                setActionError(backendError.error);
+            } else if (backendError?.detail) {
+                setActionError(backendError.detail);
+            } else {
+                setActionError(
+                    "Unable to submit the borrowing request. Please try again."
+                );
+            }
+
+        } finally {
+            setBookActionLoading(null);
+        }
+    };
+
+    // =====================================================
+    // MEMBER REQUEST BOOK
+    // =====================================================
+
+    // Kept as a separate handler for compatibility with the existing
+    // UI structure. All member borrowing requests now use the same
+    // librarian-approval workflow, regardless of availability.
+    const handleRequestBook = async (book) => {
+        await handleBorrowBook(book);
+    };
+
+    // =====================================================
+    // INITIAL LOAD
+    // =====================================================
+
+    useEffect(() => {
+        fetchBooks();
+        fetchAuthors();
+        fetchCategories();
+    }, []);
+
+    // =====================================================
+    // LOAD MEMBER REQUESTS
+    // =====================================================
+
+    useEffect(() => {
+        if (isMember) {
+            fetchMemberRequests();
+        } else {
+            setMemberRequests([]);
+        }
+    }, [
+        user?.username,
+        user?.role,
+    ]);
+
     // =========================
     // LOAD RECENT SEARCHES
     // =========================
@@ -505,16 +684,6 @@ function Books() {
         user?.username,
         user?.role,
     ]);
-
-    // =========================
-    // INITIAL LOAD
-    // =========================
-
-    useEffect(() => {
-        fetchBooks();
-        fetchAuthors();
-        fetchCategories();
-    }, []);
 
     // =========================
     // CLEAN SEARCH TIMER
@@ -1305,6 +1474,68 @@ function Books() {
             </div>
 
             {/* =========================
+                MEMBER ACTION FEEDBACK
+            ========================== */}
+
+            {isMember &&
+                actionMessage && (
+                    <div
+                        className="alert alert-success border-0 shadow-sm d-flex justify-content-between align-items-start"
+                        role="alert"
+                    >
+
+                        <div>
+                            <strong>
+                                ✅ Success
+                            </strong>
+
+                            <div className="small mt-1">
+                                {actionMessage}
+                            </div>
+                        </div>
+
+                        <button
+                            type="button"
+                            className="btn-close"
+                            aria-label="Close"
+                            onClick={() =>
+                                setActionMessage("")
+                            }
+                        />
+
+                    </div>
+                )}
+
+            {isMember &&
+                actionError && (
+                    <div
+                        className="alert alert-danger border-0 shadow-sm d-flex justify-content-between align-items-start"
+                        role="alert"
+                    >
+
+                        <div>
+                            <strong>
+                                ⚠️ Unable to complete action
+                            </strong>
+
+                            <div className="small mt-1">
+                                {actionError}
+                            </div>
+                        </div>
+
+                        <button
+                            type="button"
+                            className="btn-close"
+                            aria-label="Close"
+                            onClick={() =>
+                                setActionError("")
+                            }
+                        />
+
+                    </div>
+                )}
+
+            {/* =========================
                 SEARCH HERO
             ========================== */}
 
@@ -1945,7 +2176,7 @@ function Books() {
                             <div>
 
                                 <h5 className="fw-bold mb-1">
-                                    Available Books
+                                    Library Collection
                                 </h5>
 
                                 <small className="text-muted">
@@ -1984,6 +2215,20 @@ function Books() {
                                         getCoverUrl(
                                             book
                                         );
+
+                                    const pendingRequest =
+                                        isMember &&
+                                        hasPendingRequest(
+                                            book.id
+                                        );
+
+                                    const borrowing =
+                                        bookActionLoading ===
+                                        `borrow-${book.id}`;
+
+                                    const requesting =
+                                        bookActionLoading ===
+                                        `request-${book.id}`;
 
                                     return (
                                         <div
@@ -2086,6 +2331,8 @@ function Books() {
 
                                                     <div className="mt-auto">
 
+                                                        {/* TOTAL COPIES */}
+
                                                         <div className="d-flex justify-content-between align-items-center mb-3">
 
                                                             <span className="small text-muted">
@@ -2099,6 +2346,8 @@ function Books() {
                                                             </span>
 
                                                         </div>
+
+                                                        {/* AVAILABILITY */}
 
                                                         <div className="d-flex justify-content-between align-items-center mb-3">
 
@@ -2121,6 +2370,93 @@ function Books() {
                                                             </span>
 
                                                         </div>
+
+                                                        {/* =================================================
+                                                            MEMBER BORROWING CONTROLS
+                                                        ================================================= */}
+
+                                                        {isMember && (
+
+                                                            <div className="mb-3">
+
+                                                                {(() => {
+                                                                    const requestStatus =
+                                                                        getBookRequestStatus(
+                                                                            book.id
+                                                                        );
+
+                                                                    const borrowing =
+                                                                        bookActionLoading ===
+                                                                        `borrow-${book.id}`;
+
+                                                                    if (requestStatus === "pending") {
+                                                                        return (
+                                                                            <button
+                                                                                type="button"
+                                                                                className="btn btn-outline-secondary w-100"
+                                                                                disabled
+                                                                            >
+                                                                                ⏳ Request Pending
+                                                                            </button>
+                                                                        );
+                                                                    }
+
+                                                                    if (requestStatus === "approved") {
+                                                                        return (
+                                                                            <button
+                                                                                type="button"
+                                                                                className="btn btn-outline-success w-100"
+                                                                                disabled
+                                                                            >
+                                                                                ✅ Request Approved / Book Issued
+                                                                            </button>
+                                                                        );
+                                                                    }
+
+                                                                    return (
+                                                                        <button
+                                                                            type="button"
+                                                                            className="btn btn-success w-100"
+                                                                            onClick={() =>
+                                                                                handleBorrowBook(
+                                                                                    book
+                                                                                )
+                                                                            }
+                                                                            disabled={
+                                                                                borrowing ||
+                                                                                bookActionLoading !==
+                                                                                    null ||
+                                                                                memberRequestLoading
+                                                                            }
+                                                                        >
+                                                                            {borrowing ? (
+                                                                                <>
+                                                                                    <span
+                                                                                        className="spinner-border spinner-border-sm me-2"
+                                                                                        role="status"
+                                                                                    />
+                                                                                    Submitting Request...
+                                                                                </>
+                                                                            ) : (
+                                                                                <>
+                                                                                    📚 Borrow Book
+                                                                                </>
+                                                                            )}
+                                                                        </button>
+                                                                    );
+                                                                })()}
+
+                                                                <small className="d-block text-muted text-center mt-2">
+                                                                    Librarian approval is required before the book is issued.
+                                                                </small>
+
+                                                            </div>
+
+                                                        )}
+
+                                                        {/* =================================================
+                                                            ADMIN / LIBRARIAN CONTROLS
+                                                        ================================================= */}
 
                                                         {canManageBooks && (
                                                             <div className="d-flex gap-2">

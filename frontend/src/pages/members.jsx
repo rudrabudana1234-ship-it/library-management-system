@@ -38,14 +38,29 @@ function Members() {
 
     const [search, setSearch] = useState("");
 
+    const [searchInput, setSearchInput] = useState("");
+
     const [activeFilter, setActiveFilter] = useState("");
 
     const [ordering, setOrdering] = useState("");
 
-    const [searchInput, setSearchInput] = useState("");
-
     const [filtersApplied, setFiltersApplied] =
         useState(false);
+
+    // =========================================================
+    // SEARCH UI
+    // =========================================================
+
+    const [showSuggestions, setShowSuggestions] =
+        useState(false);
+
+    const [recentSearches, setRecentSearches] =
+        useState([]);
+
+    const [suggestions, setSuggestions] =
+        useState([]);
+
+    const searchContainerRef = useRef(null);
 
     // =========================================================
     // MODAL
@@ -94,14 +109,162 @@ function Members() {
     const isLibrarian =
         user?.role === "librarian";
 
-    const isMember =
-        user?.role === "member";
-
     const canCreateMembers =
         isAdmin || isLibrarian;
 
     const canManageMembers =
         isAdmin || isLibrarian;
+
+    // =========================================================
+    // RECENT SEARCH STORAGE KEY
+    // =========================================================
+
+    const RECENT_SEARCH_KEY =
+        "lms_recent_member_searches";
+
+    // =========================================================
+    // LOAD RECENT SEARCHES
+    // =========================================================
+
+    useEffect(() => {
+
+        try {
+
+            const stored =
+                localStorage.getItem(
+                    RECENT_SEARCH_KEY
+                );
+
+            if (stored) {
+
+                const parsed =
+                    JSON.parse(stored);
+
+                if (Array.isArray(parsed)) {
+
+                    setRecentSearches(
+                        parsed.slice(0, 6)
+                    );
+                }
+            }
+
+        } catch (storageError) {
+
+            console.error(
+                "RECENT SEARCH LOAD ERROR:",
+                storageError
+            );
+        }
+
+    }, []);
+
+    // =========================================================
+    // SAVE RECENT SEARCH
+    // =========================================================
+
+    const saveRecentSearch = (
+        value
+    ) => {
+
+        const trimmed =
+            value.trim();
+
+        if (!trimmed) {
+            return;
+        }
+
+        try {
+
+            const existing =
+                JSON.parse(
+                    localStorage.getItem(
+                        RECENT_SEARCH_KEY
+                    ) || "[]"
+                );
+
+            const safeExisting =
+                Array.isArray(existing)
+                    ? existing
+                    : [];
+
+            const updated = [
+                trimmed,
+                ...safeExisting.filter(
+                    item =>
+                        item.toLowerCase() !==
+                        trimmed.toLowerCase()
+                ),
+            ].slice(0, 6);
+
+            localStorage.setItem(
+                RECENT_SEARCH_KEY,
+                JSON.stringify(updated)
+            );
+
+            setRecentSearches(updated);
+
+        } catch (storageError) {
+
+            console.error(
+                "RECENT SEARCH SAVE ERROR:",
+                storageError
+            );
+        }
+    };
+
+    // =========================================================
+    // REMOVE RECENT SEARCH
+    // =========================================================
+
+    const removeRecentSearch = (
+        value
+    ) => {
+
+        try {
+
+            const updated =
+                recentSearches.filter(
+                    item => item !== value
+                );
+
+            setRecentSearches(updated);
+
+            localStorage.setItem(
+                RECENT_SEARCH_KEY,
+                JSON.stringify(updated)
+            );
+
+        } catch (storageError) {
+
+            console.error(
+                "RECENT SEARCH REMOVE ERROR:",
+                storageError
+            );
+        }
+    };
+
+    // =========================================================
+    // CLEAR ALL RECENT SEARCHES
+    // =========================================================
+
+    const clearRecentSearches = () => {
+
+        try {
+
+            localStorage.removeItem(
+                RECENT_SEARCH_KEY
+            );
+
+        } catch (storageError) {
+
+            console.error(
+                "RECENT SEARCH CLEAR ERROR:",
+                storageError
+            );
+        }
+
+        setRecentSearches([]);
+    };
 
     // =========================================================
     // BUILD QUERY
@@ -117,7 +280,7 @@ function Members() {
             new URLSearchParams();
 
         const trimmedSearch =
-            customSearch.trim();
+            customSearch?.trim() || "";
 
         if (trimmedSearch) {
 
@@ -180,10 +343,6 @@ function Members() {
                     requestUrl
                 );
 
-            // =================================================
-            // IGNORE OLD REQUEST
-            // =================================================
-
             if (
                 currentRequestId !==
                 requestIdRef.current
@@ -195,7 +354,7 @@ function Members() {
                 response.data;
 
             // =================================================
-            // PAGINATED RESPONSE
+            // PAGINATED
             // =================================================
 
             if (
@@ -227,7 +386,7 @@ function Members() {
             }
 
             // =================================================
-            // NON-PAGINATED RESPONSE
+            // NON-PAGINATED
             // =================================================
 
             if (
@@ -342,6 +501,102 @@ function Members() {
     }, []);
 
     // =========================================================
+    // CLOSE SEARCH DROPDOWN WHEN CLICKING OUTSIDE
+    // =========================================================
+
+    useEffect(() => {
+
+        const handleOutsideClick = (
+            event
+        ) => {
+
+            if (
+                searchContainerRef.current &&
+                !searchContainerRef.current.contains(
+                    event.target
+                )
+            ) {
+
+                setShowSuggestions(false);
+            }
+        };
+
+        document.addEventListener(
+            "mousedown",
+            handleOutsideClick
+        );
+
+        return () => {
+
+            document.removeEventListener(
+                "mousedown",
+                handleOutsideClick
+            );
+        };
+
+    }, []);
+
+    // =========================================================
+    // GENERATE SEARCH SUGGESTIONS
+    // =========================================================
+
+    useEffect(() => {
+
+        const value =
+            searchInput.trim().toLowerCase();
+
+        if (!value) {
+
+            setSuggestions([]);
+
+            return;
+        }
+
+        const generatedSuggestions = [];
+
+        members.forEach(member => {
+
+            const memberName =
+                member.name || "";
+
+            const memberEmail =
+                member.email || "";
+
+            const memberPhone =
+                member.phone || "";
+
+            if (
+                memberName
+                    .toLowerCase()
+                    .startsWith(value) ||
+                memberEmail
+                    .toLowerCase()
+                    .startsWith(value) ||
+                memberPhone
+                    .toLowerCase()
+                    .startsWith(value)
+            ) {
+
+                generatedSuggestions.push({
+                    id: member.id,
+                    type: "member",
+                    label: memberName,
+                    email: memberEmail,
+                    phone: memberPhone,
+                });
+            }
+        });
+
+        setSuggestions(
+            generatedSuggestions.slice(0, 6)
+        );
+
+    }, [
+        searchInput,
+        members,
+    ]);
+
+    // =========================================================
     // SEARCH INPUT
     // =========================================================
 
@@ -354,9 +609,9 @@ function Members() {
 
         setSearchInput(value);
 
-        // -----------------------------------------------------
-        // Debounced search
-        // -----------------------------------------------------
+        setShowSuggestions(
+            value.trim().length > 0
+        );
 
         if (
             searchTimeoutRef.current
@@ -366,6 +621,10 @@ function Members() {
                 searchTimeoutRef.current
             );
         }
+
+        // =====================================================
+        // PREFIX / DEBOUNCED SEARCH
+        // =====================================================
 
         searchTimeoutRef.current =
             setTimeout(() => {
@@ -381,7 +640,7 @@ function Members() {
     };
 
     // =========================================================
-    // SEARCH / FILTER / ORDER EFFECT
+    // SEARCH EFFECT
     // =========================================================
 
     useEffect(() => {
@@ -404,6 +663,49 @@ function Members() {
         ordering,
         filtersApplied,
     ]);
+
+    // =========================================================
+    // SELECT SEARCH SUGGESTION
+    // =========================================================
+
+    const handleSuggestionSelect = (
+        suggestion
+    ) => {
+
+        const value =
+            suggestion.label ||
+            suggestion.email ||
+            "";
+
+        setSearchInput(value);
+
+        setSearch(value);
+
+        setFiltersApplied(true);
+
+        saveRecentSearch(value);
+
+        setShowSuggestions(false);
+    };
+
+    // =========================================================
+    // SELECT RECENT SEARCH
+    // =========================================================
+
+    const handleRecentSearchSelect = (
+        value
+    ) => {
+
+        setSearchInput(value);
+
+        setSearch(value);
+
+        setFiltersApplied(true);
+
+        saveRecentSearch(value);
+
+        setShowSuggestions(false);
+    };
 
     // =========================================================
     // APPLY FILTERS
@@ -432,6 +734,15 @@ function Members() {
         );
 
         setFiltersApplied(true);
+
+        if (trimmedSearch) {
+
+            saveRecentSearch(
+                trimmedSearch
+            );
+        }
+
+        setShowSuggestions(false);
     };
 
     // =========================================================
@@ -458,6 +769,8 @@ function Members() {
         setOrdering("");
 
         setFiltersApplied(false);
+
+        setShowSuggestions(false);
 
         fetchMembers(
             "members/"
@@ -578,10 +891,6 @@ function Members() {
 
         setFormError("");
 
-        // =====================================================
-        // BASIC VALIDATION
-        // =====================================================
-
         if (!name.trim()) {
 
             setFormError(
@@ -612,10 +921,6 @@ function Members() {
             return;
         }
 
-        // =====================================================
-        // EMAIL VALIDATION
-        // =====================================================
-
         const emailPattern =
             /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -631,10 +936,6 @@ function Members() {
 
             return;
         }
-
-        // =====================================================
-        // USER ID VALIDATION
-        // =====================================================
 
         if (!editingMember) {
 
@@ -691,6 +992,7 @@ function Members() {
                     "members/",
                     memberData
                 );
+
             }
 
             // =================================================
@@ -713,7 +1015,9 @@ function Members() {
 
             resetForm();
 
-            await fetchMembers();
+            await fetchMembers(
+                buildQuery()
+            );
 
         } catch (requestError) {
 
@@ -781,7 +1085,9 @@ function Members() {
                 `members/${member.id}/`
             );
 
-            await fetchMembers();
+            await fetchMembers(
+                buildQuery()
+            );
 
         } catch (requestError) {
 
@@ -851,7 +1157,7 @@ function Members() {
     };
 
     // =========================================================
-    // ACTIVE FILTER LABEL
+    // STATUS LABEL
     // =========================================================
 
     const getStatusLabel = () => {
@@ -869,6 +1175,50 @@ function Members() {
         }
 
         return "All";
+    };
+
+    // =========================================================
+    // ORDERING LABEL
+    // =========================================================
+
+    const getOrderingLabel = () => {
+
+        const labels = {
+
+            name: "Name A-Z",
+
+            "-name": "Name Z-A",
+
+            email: "Email A-Z",
+
+            "-email": "Email Z-A",
+
+            joined_date: "Oldest Joined",
+
+            "-joined_date": "Newest Joined",
+
+        };
+
+        return (
+            labels[ordering] ||
+            ordering
+        );
+    };
+
+    // =========================================================
+    // SEARCH RESULT DESCRIPTION
+    // =========================================================
+
+    const getMemberInitial = (
+        memberName
+    ) => {
+
+        return (
+            memberName
+                ?.charAt(0)
+                ?.toUpperCase() ||
+            "?"
+        );
     };
 
     // =========================================================
@@ -900,7 +1250,7 @@ function Members() {
                     </div>
 
                     <p className="text-muted mb-0">
-                        Search, filter, sort and manage library members.
+                        Search, discover, filter and manage library members.
                     </p>
 
                 </div>
@@ -916,6 +1266,7 @@ function Members() {
                         <span className="me-1">
                             +
                         </span>
+
                         Add Member
                     </button>
 
@@ -939,9 +1290,16 @@ function Members() {
 
                         <div className="row g-3 align-items-end">
 
-                            {/* SEARCH */}
+                            {/* =================================================
+                                ADVANCED SEARCH
+                            ================================================= */}
 
-                            <div className="col-12 col-xl-5">
+                            <div
+                                className="col-12 col-xl-5 position-relative"
+                                ref={
+                                    searchContainerRef
+                                }
+                            >
 
                                 <label className="form-label fw-semibold">
                                     Search Members
@@ -956,11 +1314,20 @@ function Members() {
                                     <input
                                         type="text"
                                         className="form-control"
-                                        value={searchInput}
+                                        value={
+                                            searchInput
+                                        }
+                                        onFocus={() =>
+                                            setShowSuggestions(
+                                                searchInput.trim().length >
+                                                0
+                                            )
+                                        }
                                         onChange={
                                             handleSearchChange
                                         }
                                         placeholder="Search by name, email or phone..."
+                                        autoComplete="off"
                                     />
 
                                     {searchInput && (
@@ -969,8 +1336,14 @@ function Members() {
                                             type="button"
                                             className="btn btn-outline-secondary"
                                             onClick={() => {
+
                                                 setSearchInput("");
+
                                                 setSearch("");
+
+                                                setShowSuggestions(
+                                                    false
+                                                );
                                             }}
                                         >
                                             ✕
@@ -981,12 +1354,219 @@ function Members() {
                                 </div>
 
                                 <small className="text-muted">
-                                    Search works across member name, email and phone.
+                                    Start typing a few characters to find members quickly.
                                 </small>
+
+                                {/* =================================================
+                                    SEARCH DROPDOWN
+                                ================================================= */}
+
+                                {showSuggestions && (
+
+                                    <div
+                                        className="position-absolute bg-white border rounded shadow-lg mt-1 w-100"
+                                        style={{
+                                            zIndex: 1050,
+                                            maxHeight: "360px",
+                                            overflowY: "auto",
+                                        }}
+                                    >
+
+                                        {/* =================================================
+                                            LIVE SUGGESTIONS
+                                        ================================================= */}
+
+                                        {suggestions.length > 0 && (
+
+                                            <>
+
+                                                <div className="px-3 py-2 border-bottom bg-light">
+
+                                                    <small className="text-muted fw-semibold">
+                                                        Suggested Members
+                                                    </small>
+
+                                                </div>
+
+                                                {suggestions.map(
+                                                    suggestion => (
+
+                                                        <button
+                                                            type="button"
+                                                            key={
+                                                                suggestion.id
+                                                            }
+                                                            className="dropdown-item px-3 py-3"
+                                                            onClick={() =>
+                                                                handleSuggestionSelect(
+                                                                    suggestion
+                                                                )
+                                                            }
+                                                        >
+
+                                                            <div className="d-flex align-items-center gap-3">
+
+                                                                <div
+                                                                    className="rounded-circle bg-primary-subtle text-primary d-flex align-items-center justify-content-center fw-bold flex-shrink-0"
+                                                                    style={{
+                                                                        width:
+                                                                            "38px",
+                                                                        height:
+                                                                            "38px",
+                                                                    }}
+                                                                >
+                                                                    {getMemberInitial(
+                                                                        suggestion.label
+                                                                    )}
+                                                                </div>
+
+                                                                <div className="text-start">
+
+                                                                    <div className="fw-semibold">
+                                                                        {
+                                                                            suggestion.label
+                                                                        }
+                                                                    </div>
+
+                                                                    {suggestion.email && (
+
+                                                                        <small className="text-muted">
+                                                                            {
+                                                                                suggestion.email
+                                                                            }
+                                                                        </small>
+
+                                                                    )}
+
+                                                                    {suggestion.phone && (
+
+                                                                        <small className="text-muted d-block">
+                                                                            📞{" "}
+                                                                            {
+                                                                                suggestion.phone
+                                                                            }
+                                                                        </small>
+
+                                                                    )}
+
+                                                                </div>
+
+                                                            </div>
+
+                                                        </button>
+
+                                                    )
+                                                )}
+
+                                            </>
+
+                                        )}
+
+                                        {/* =================================================
+                                            RECENT SEARCHES
+                                        ================================================= */}
+
+                                        {recentSearches.length > 0 && (
+
+                                            <>
+
+                                                <div className="px-3 py-2 border-top border-bottom bg-light d-flex justify-content-between align-items-center">
+
+                                                    <small className="text-muted fw-semibold">
+                                                        🕘 Recent Searches
+                                                    </small>
+
+                                                    <button
+                                                        type="button"
+                                                        className="btn btn-sm btn-link text-danger p-0"
+                                                        onClick={
+                                                            clearRecentSearches
+                                                        }
+                                                    >
+                                                        Clear
+                                                    </button>
+
+                                                </div>
+
+                                                {recentSearches.map(
+                                                    recent => (
+
+                                                        <div
+                                                            key={
+                                                                recent
+                                                            }
+                                                            className="d-flex align-items-center"
+                                                        >
+
+                                                            <button
+                                                                type="button"
+                                                                className="dropdown-item px-3 py-2 flex-grow-1"
+                                                                onClick={() =>
+                                                                    handleRecentSearchSelect(
+                                                                        recent
+                                                                    )
+                                                                }
+                                                            >
+                                                                🕘{" "}
+                                                                {recent}
+                                                            </button>
+
+                                                            <button
+                                                                type="button"
+                                                                className="btn btn-sm text-muted me-2"
+                                                                onClick={() =>
+                                                                    removeRecentSearch(
+                                                                        recent
+                                                                    )
+                                                                }
+                                                                title="Remove recent search"
+                                                            >
+                                                                ✕
+                                                            </button>
+
+                                                        </div>
+
+                                                    )
+                                                )}
+
+                                            </>
+
+                                        )}
+
+                                        {/* =================================================
+                                            NO SUGGESTIONS
+                                        ================================================= */}
+
+                                        {suggestions.length === 0 &&
+                                            recentSearches.length === 0 && (
+
+                                                <div className="px-3 py-4 text-center">
+
+                                                    <div className="fs-3 mb-2">
+                                                        🔎
+                                                    </div>
+
+                                                    <div className="fw-semibold">
+                                                        Search members
+                                                    </div>
+
+                                                    <small className="text-muted">
+                                                        Try a name, email or phone number.
+                                                    </small>
+
+                                                </div>
+
+                                            )}
+
+                                    </div>
+
+                                )}
 
                             </div>
 
-                            {/* STATUS */}
+                            {/* =================================================
+                                STATUS
+                            ================================================= */}
 
                             <div className="col-12 col-md-4 col-xl-2">
 
@@ -996,7 +1576,9 @@ function Members() {
 
                                 <select
                                     className="form-select"
-                                    value={activeFilter}
+                                    value={
+                                        activeFilter
+                                    }
                                     onChange={(event) =>
                                         setActiveFilter(
                                             event.target.value
@@ -1020,7 +1602,9 @@ function Members() {
 
                             </div>
 
-                            {/* SORT */}
+                            {/* =================================================
+                                SORT
+                            ================================================= */}
 
                             <div className="col-12 col-md-4 col-xl-2">
 
@@ -1030,7 +1614,9 @@ function Members() {
 
                                 <select
                                     className="form-select"
-                                    value={ordering}
+                                    value={
+                                        ordering
+                                    }
                                     onChange={(event) =>
                                         setOrdering(
                                             event.target.value
@@ -1070,7 +1656,9 @@ function Members() {
 
                             </div>
 
-                            {/* BUTTONS */}
+                            {/* =================================================
+                                BUTTONS
+                            ================================================= */}
 
                             <div className="col-12 col-md-4 col-xl-3">
 
@@ -1079,7 +1667,9 @@ function Members() {
                                     <button
                                         type="submit"
                                         className="btn btn-primary flex-grow-1"
-                                        disabled={loading}
+                                        disabled={
+                                            loading
+                                        }
                                     >
                                         🔍 Search
                                     </button>
@@ -1117,51 +1707,55 @@ function Members() {
                 activeFilter ||
                 ordering) && (
 
-                <div className="d-flex flex-wrap align-items-center gap-2 mb-3">
+                <div className="card border-0 bg-light mb-4">
 
-                    <span className="text-muted small">
-                        Active filters:
-                    </span>
+                    <div className="card-body py-3">
 
-                    {search && (
+                        <div className="d-flex flex-wrap align-items-center gap-2">
 
-                        <span className="badge bg-light text-dark border">
-                            🔍 {search}
-                        </span>
+                            <span className="text-muted small fw-semibold">
+                                Active:
+                            </span>
 
-                    )}
+                            {search && (
 
-                    {activeFilter && (
+                                <span className="badge bg-primary-subtle text-primary border border-primary-subtle">
+                                    🔍 {search}
+                                </span>
 
-                        <span className="badge bg-light text-dark border">
-                            Status: {getStatusLabel()}
-                        </span>
+                            )}
 
-                    )}
+                            {activeFilter && (
 
-                    {ordering && (
+                                <span className="badge bg-secondary-subtle text-secondary border border-secondary-subtle">
+                                    Status:{" "}
+                                    {getStatusLabel()}
+                                </span>
 
-                        <span className="badge bg-light text-dark border">
+                            )}
 
-                            Sort:{" "}
+                            {ordering && (
 
-                            {ordering === "name"
-                                ? "Name A-Z"
-                                : ordering === "-name"
-                                    ? "Name Z-A"
-                                    : ordering === "email"
-                                        ? "Email A-Z"
-                                        : ordering === "-email"
-                                            ? "Email Z-A"
-                                            : ordering === "joined_date"
-                                                ? "Oldest Joined"
-                                                : ordering === "-joined_date"
-                                                    ? "Newest Joined"
-                                                    : ordering}
+                                <span className="badge bg-secondary-subtle text-secondary border border-secondary-subtle">
+                                    Sort:{" "}
+                                    {getOrderingLabel()}
+                                </span>
 
-                        </span>
+                            )}
 
-                    )}
+                            <button
+                                type="button"
+                                className="btn btn-sm btn-link text-decoration-none ms-auto"
+                                onClick={
+                                    handleClearFilters
+                                }
+                            >
+                                Clear all
+                            </button>
+
+                        </div>
+
+                    </div>
 
                 </div>
 
@@ -1203,7 +1797,9 @@ function Members() {
                         <button
                             className="btn btn-outline-danger btn-sm"
                             onClick={() =>
-                                fetchMembers()
+                                fetchMembers(
+                                    buildQuery()
+                                )
                             }
                         >
                             🔄 Retry
@@ -1247,7 +1843,7 @@ function Members() {
             )}
 
             {/* =================================================
-                EMPTY STATE
+                EMPTY
             ================================================= */}
 
             {!loading &&
@@ -1323,8 +1919,7 @@ function Members() {
                                             : ""}
 
                                         {totalMembers >
-                                            members.length &&
-                                            (
+                                            members.length && (
                                                 <>
                                                     {" "}of{" "}
                                                     <strong>
@@ -1424,9 +2019,7 @@ function Members() {
                                                     {/* NUMBER */}
 
                                                     <td className="px-3 text-muted fw-semibold">
-
                                                         {index + 1}
-
                                                     </td>
 
                                                     {/* MEMBER */}
@@ -1436,7 +2029,7 @@ function Members() {
                                                         <div className="d-flex align-items-center gap-3">
 
                                                             <div
-                                                                className="rounded-circle bg-primary-subtle text-primary d-flex align-items-center justify-content-center fw-bold"
+                                                                className="rounded-circle bg-primary-subtle text-primary d-flex align-items-center justify-content-center fw-bold flex-shrink-0"
                                                                 style={{
                                                                     width:
                                                                         "42px",
@@ -1444,12 +2037,9 @@ function Members() {
                                                                         "42px",
                                                                 }}
                                                             >
-                                                                {member.name
-                                                                    ?.charAt(
-                                                                        0
-                                                                    )
-                                                                    ?.toUpperCase() ||
-                                                                    "?"}
+                                                                {getMemberInitial(
+                                                                    member.name
+                                                                )}
                                                             </div>
 
                                                             <div>
@@ -1480,13 +2070,11 @@ function Members() {
                                                     {/* EMAIL */}
 
                                                     <td>
-
-                                                        <span>
-                                                            {
-                                                                member.email
-                                                            }
-                                                        </span>
-
+                                                        {member.email || (
+                                                            <span className="text-muted">
+                                                                —
+                                                            </span>
+                                                        )}
                                                     </td>
 
                                                     {/* PHONE */}
@@ -1670,7 +2258,8 @@ function Members() {
                                         </div>
 
                                         <small className="text-muted">
-                                            Use the buttons to navigate pages
+                                            Showing {members.length} of{" "}
+                                            {totalMembers}
                                         </small>
 
                                     </div>
@@ -1750,7 +2339,7 @@ function Members() {
                                         disabled={
                                             saving
                                         }
-                                    ></button>
+                                    />
 
                                 </div>
 
@@ -1763,8 +2352,6 @@ function Members() {
                                 >
 
                                     <div className="modal-body">
-
-                                        {/* FORM ERROR */}
 
                                         {formError && (
 
@@ -1834,13 +2421,7 @@ function Members() {
 
                                             {/* NAME */}
 
-                                            <div
-                                                className={
-                                                    editingMember
-                                                        ? "col-md-6"
-                                                        : "col-md-6"
-                                                }
-                                            >
+                                            <div className="col-md-6">
 
                                                 <label className="form-label fw-semibold">
                                                     Member Name
@@ -1952,7 +2533,7 @@ function Members() {
                                                     disabled={
                                                         saving
                                                     }
-                                                ></textarea>
+                                                />
 
                                             </div>
 
@@ -2033,7 +2614,7 @@ function Members() {
                                                     <span
                                                         className="spinner-border spinner-border-sm me-2"
                                                         role="status"
-                                                    ></span>
+                                                    />
 
                                                     Saving...
 
@@ -2070,7 +2651,7 @@ function Members() {
                                 ? undefined
                                 : closeModal
                         }
-                    ></div>
+                    />
 
                 </>
 

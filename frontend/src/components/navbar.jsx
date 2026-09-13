@@ -89,7 +89,6 @@ function Navbar() {
                                 {(user?.role === "librarian" ||
                                     user?.role === "admin") && (
                                     <>
-
                                         <li className="nav-item">
                                             <Link
                                                 to="/members"
@@ -107,9 +106,8 @@ function Navbar() {
                                                 Loans
                                             </Link>
                                         </li>
-
                                     </>
-                                )}
+                                )} 
 
 
                                 {/* Admin Only */}

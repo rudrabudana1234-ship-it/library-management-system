@@ -154,8 +154,10 @@ class Loan(models.Model):
 
     STATUS_CHOICES = [
         ('borrowed', 'Borrowed'),
-        ('returned', 'Returned'),
         ('overdue', 'Overdue'),
+        ('return_requested', 'Return Requested'),
+        ('returned', 'Returned'),
+        ('lost', 'Lost'),
     ]
 
     book = models.ForeignKey(
@@ -190,6 +192,207 @@ class Loan(models.Model):
     def __str__(self):
         return f"{self.book.title} → {self.member.name}"
 
+
+# =========================================================
+# RETURN REQUEST
+# =========================================================
+
+class ReturnRequest(models.Model):
+
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+    ]
+
+    CONDITION_CHOICES = [
+        ('normal', 'Normal'),
+        ('damaged', 'Damaged'),
+        ('lost', 'Lost'),
+    ]
+
+    loan = models.OneToOneField(
+        Loan,
+        on_delete=models.CASCADE,
+        related_name='return_request'
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='pending'
+    )
+
+    condition = models.CharField(
+        max_length=20,
+        choices=CONDITION_CHOICES,
+        null=True,
+        blank=True
+    )
+
+    damage_description = models.TextField(
+        blank=True
+    )
+
+    requested_at = models.DateTimeField(
+        auto_now_add=True
+    )
+
+    processed_at = models.DateTimeField(
+        null=True,
+        blank=True
+    )
+
+    class Meta:
+
+        ordering = [
+            '-requested_at'
+        ]
+
+    def __str__(self):
+        return (
+            f"Return Request #{self.id} - "
+            f"{self.loan.book.title} - "
+            f"{self.status}"
+        )
+
+
+# =========================================================
+# FEE
+# =========================================================
+
+class Fee(models.Model):
+
+    FEE_TYPE_CHOICES = [
+        ('late', 'Late Fee'),
+        ('damage', 'Damage Fee'),
+        ('lost', 'Lost Book Fee'),
+    ]
+
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('paid', 'Paid'),
+        ('waived', 'Waived'),
+    ]
+
+    loan = models.ForeignKey(
+        Loan,
+        on_delete=models.CASCADE,
+        related_name='fees'
+    )
+
+    fee_type = models.CharField(
+        max_length=20,
+        choices=FEE_TYPE_CHOICES
+    )
+
+    amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=2
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='pending'
+    )
+
+    description = models.TextField(
+        blank=True
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True
+    )
+
+    paid_at = models.DateTimeField(
+        null=True,
+        blank=True
+    )
+
+    class Meta:
+
+        ordering = [
+            '-created_at'
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.get_fee_type_display()} - "
+            f"{self.loan.book.title} - "
+            f"₹{self.amount}"
+        )
+
+class Payment(models.Model):
+
+    STATUS_CHOICES = [
+        ("created", "Created"),
+        ("successful", "Successful"),
+        ("failed", "Failed"),
+    ]
+
+    PAYMENT_METHOD_CHOICES = [
+        ("upi", "UPI"),
+        ("card", "Card"),
+        ("netbanking", "Net Banking"),
+    ]
+
+    fee = models.ForeignKey(
+        Fee,
+        on_delete=models.PROTECT,
+        related_name="payments",
+    )
+
+    amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default="created",
+    )
+
+    payment_method = models.CharField(
+        max_length=20,
+        choices=PAYMENT_METHOD_CHOICES,
+        blank=True,
+        null=True,
+    )
+
+    transaction_id = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+    )
+
+    gateway_order_id = models.CharField(
+        max_length=255,
+        unique=True,
+    )
+
+    gateway_payment_id = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    paid_at = models.DateTimeField(
+        blank=True,
+        null=True,
+    )
+
+    def __str__(self):
+        return (
+            f"Payment #{self.id} - "
+            f"{self.amount} - "
+            f"{self.status}"
+        )
 
 # =========================================================
 # BOOK REQUEST
@@ -248,6 +451,7 @@ class BookRequest(models.Model):
             f"{self.book.title} "
             f"({self.status})"
         )
+
 
 # =========================================================
 # RECENT SEARCH

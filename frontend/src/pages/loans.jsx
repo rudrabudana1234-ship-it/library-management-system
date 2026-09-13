@@ -39,7 +39,18 @@ function Loans() {
     const [members, setMembers] = useState([]);
 
     // =====================================================
-    // MODAL
+    // BORROWING REQUESTS
+    // =====================================================
+
+    const [bookRequests, setBookRequests] = useState([]);
+    const [requestLoading, setRequestLoading] = useState(false);
+    const [requestActionLoading, setRequestActionLoading] =
+        useState(null);
+    const [requestError, setRequestError] = useState("");
+    const [requestMessage, setRequestMessage] = useState("");
+
+    // =====================================================
+    // ISSUE BOOK MODAL
     // =====================================================
 
     const [showModal, setShowModal] = useState(false);
@@ -47,82 +58,116 @@ function Loans() {
     const [formData, setFormData] = useState({
         book: "",
         member: "",
-        due_date: "",
     });
 
     const [formError, setFormError] = useState("");
     const [saving, setSaving] = useState(false);
 
     // =====================================================
+    // RETURN MODAL
+    // =====================================================
+
+    const [showReturnModal, setShowReturnModal] = useState(false);
+    const [selectedLoan, setSelectedLoan] = useState(null);
+
+    const [returnCondition, setReturnCondition] =
+        useState("normal");
+
+    const [damageFee, setDamageFee] = useState("");
+    const [lostFee, setLostFee] = useState("");
+    const [returnDescription, setReturnDescription] =
+        useState("");
+
+    const [returnSaving, setReturnSaving] = useState(false);
+    const [returnError, setReturnError] = useState("");
+    const [returnMessage, setReturnMessage] = useState("");
+
+    // =====================================================
     // ROLE
     // =====================================================
 
     const canManageLoans =
-        user?.role === "admin" ||
         user?.role === "librarian";
 
-    const canEditLoans =
-        user?.role === "admin";
+    // =====================================================
+    // EXTRACT RESULTS
+    // =====================================================
+
+    const extractResults = (data) => {
+        if (Array.isArray(data)) {
+            return data;
+        }
+
+        if (Array.isArray(data?.results)) {
+            return data.results;
+        }
+
+        return [];
+    };
 
     // =====================================================
     // FETCH LOANS
     // =====================================================
 
-    const fetchLoans = async (url = "loans/") => {
+    const fetchLoans = async (
+        url = "loans/?ordering=-borrow_date"
+    ) => {
         try {
             setLoading(true);
             setError("");
 
             const response = await api.get(url);
 
-            console.log(
-                "LOAN API RESPONSE:",
-                response.data
-            );
+            const data = response.data;
 
-            if (Array.isArray(response.data.results)) {
-                setLoans(response.data.results);
-
-                setNextPage(response.data.next);
-                setPreviousPage(response.data.previous);
-
-                setTotalCount(
-                    response.data.count || 0
-                );
-            } else if (Array.isArray(response.data)) {
-                setLoans(response.data);
-
+            if (Array.isArray(data?.results)) {
+                setLoans(data.results);
+                setNextPage(data.next || null);
+                setPreviousPage(data.previous || null);
+                setTotalCount(data.count || 0);
+            } else if (Array.isArray(data)) {
+                setLoans(data);
                 setNextPage(null);
                 setPreviousPage(null);
-
-                setTotalCount(
-                    response.data.length
-                );
+                setTotalCount(data.length);
             } else {
                 setLoans([]);
                 setNextPage(null);
                 setPreviousPage(null);
                 setTotalCount(0);
             }
-
-        } catch (error) {
+        } catch (err) {
             console.error(
                 "LOAN API ERROR:",
-                error.response?.data ||
-                error.message
-            );
-
-            setError(
-                JSON.stringify(
-                    error.response?.data ||
-                    error.message,
-                    null,
-                    2
-                )
+                err.response?.data || err.message
             );
 
             setLoans([]);
 
+            if (err.response) {
+                const responseData = err.response.data;
+
+                if (typeof responseData === "string") {
+                    setError(responseData);
+                } else if (responseData?.detail) {
+                    setError(responseData.detail);
+                } else {
+                    setError(
+                        JSON.stringify(
+                            responseData ||
+                                "Unable to load loans.",
+                            null,
+                            2
+                        )
+                    );
+                }
+            } else if (err.request) {
+                setError(
+                    "Network error. Unable to connect to the backend."
+                );
+            } else {
+                setError("Unable to load loans.");
+            }
         } finally {
             setLoading(false);
         }
@@ -138,19 +183,13 @@ function Loans() {
                 "books/?ordering=title"
             );
 
-            if (Array.isArray(response.data.results)) {
-                setBooks(response.data.results);
-            } else if (Array.isArray(response.data)) {
-                setBooks(response.data);
-            } else {
-                setBooks([]);
-            }
-
-        } catch (error) {
+            setBooks(
+                extractResults(response.data)
+            );
+        } catch (err) {
             console.error(
                 "BOOK API ERROR:",
-                error.response?.data ||
-                error.message
+                err.response?.data || err.message
             );
         }
     };
@@ -165,20 +204,53 @@ function Loans() {
                 "members/?ordering=name"
             );
 
-            if (Array.isArray(response.data.results)) {
-                setMembers(response.data.results);
-            } else if (Array.isArray(response.data)) {
-                setMembers(response.data);
-            } else {
-                setMembers([]);
-            }
-
-        } catch (error) {
+            setMembers(
+                extractResults(response.data)
+            );
+        } catch (err) {
             console.error(
                 "MEMBER API ERROR:",
-                error.response?.data ||
-                error.message
+                err.response?.data || err.message
             );
+        }
+    };
+
+    // =====================================================
+    // FETCH BORROWING REQUESTS
+    // =====================================================
+
+    const fetchBookRequests = async () => {
+        if (!canManageLoans) {
+            setBookRequests([]);
+            return;
+        }
+
+        try {
+            setRequestLoading(true);
+            setRequestError("");
+
+            const response = await api.get(
+                "book-requests/"
+            );
+
+            setBookRequests(
+                extractResults(response.data)
+            );
+        } catch (err) {
+            console.error(
+                "BOOK REQUEST API ERROR:",
+                err.response?.data || err.message
+            );
+
+            setBookRequests([]);
+
+            setRequestError(
+                err.response?.data?.error ||
+                    err.response?.data?.detail ||
+                    "Unable to load borrowing requests."
+            );
+        } finally {
+            setRequestLoading(false);
         }
     };
 
@@ -194,6 +266,7 @@ function Loans() {
         if (canManageLoans) {
             fetchBooks();
             fetchMembers();
+            fetchBookRequests();
         }
     }, [canManageLoans]);
 
@@ -201,163 +274,33 @@ function Loans() {
     // BUILD FILTER URL
     // =====================================================
 
-    const buildFilterUrl = () => {
-        const params = new URLSearchParams();
-
-        if (search.trim()) {
-            params.append(
-                "search",
-                search.trim()
-            );
-        }
-
-        if (statusFilter) {
-            params.append(
-                "status",
-                statusFilter
-            );
-        }
-
-        if (bookFilter) {
-            params.append(
-                "book",
-                bookFilter
-            );
-        }
-
-        if (memberFilter) {
-            params.append(
-                "member",
-                memberFilter
-            );
-        }
-
-        if (ordering) {
-            params.append(
-                "ordering",
-                ordering
-            );
-        }
-
-        const queryString =
-            params.toString();
-
-        return queryString
-            ? `loans/?${queryString}`
-            : "loans/";
-    };
-
-    // =====================================================
-    // APPLY SEARCH
-    // =====================================================
-
-    const handleSearch = (event) => {
-        event.preventDefault();
-
-        fetchLoans(
-            buildFilterUrl()
-        );
-    };
-
-    // =====================================================
-    // STATUS FILTER
-    // =====================================================
-
-    const handleStatusChange = (event) => {
-        const value =
-            event.target.value;
-
-        setStatusFilter(value);
-
-        fetchLoans(
-            buildUrlWithChanges({
-                status: value,
-            })
-        );
-    };
-
-    // =====================================================
-    // BOOK FILTER
-    // =====================================================
-
-    const handleBookChange = (event) => {
-        const value =
-            event.target.value;
-
-        setBookFilter(value);
-
-        fetchLoans(
-            buildUrlWithChanges({
-                book: value,
-            })
-        );
-    };
-
-    // =====================================================
-    // MEMBER FILTER
-    // =====================================================
-
-    const handleMemberChange = (event) => {
-        const value =
-            event.target.value;
-
-        setMemberFilter(value);
-
-        fetchLoans(
-            buildUrlWithChanges({
-                member: value,
-            })
-        );
-    };
-
-    // =====================================================
-    // ORDERING
-    // =====================================================
-
-    const handleOrderingChange = (event) => {
-        const value =
-            event.target.value;
-
-        setOrdering(value);
-
-        fetchLoans(
-            buildUrlWithChanges({
-                ordering: value,
-            })
-        );
-    };
-
-    // =====================================================
-    // BUILD URL WITH ONE CHANGED FILTER
-    // =====================================================
-
-    const buildUrlWithChanges = (changes = {}) => {
-        const params = new URLSearchParams();
-
+    const buildFilterUrl = (overrides = {}) => {
         const currentSearch =
-            changes.search !== undefined
-                ? changes.search
+            overrides.search !== undefined
+                ? overrides.search
                 : search;
 
         const currentStatus =
-            changes.status !== undefined
-                ? changes.status
+            overrides.status !== undefined
+                ? overrides.status
                 : statusFilter;
 
         const currentBook =
-            changes.book !== undefined
-                ? changes.book
+            overrides.book !== undefined
+                ? overrides.book
                 : bookFilter;
 
         const currentMember =
-            changes.member !== undefined
-                ? changes.member
+            overrides.member !== undefined
+                ? overrides.member
                 : memberFilter;
 
         const currentOrdering =
-            changes.ordering !== undefined
-                ? changes.ordering
+            overrides.ordering !== undefined
+                ? overrides.ordering
                 : ordering;
+
+        const params = new URLSearchParams();
 
         if (currentSearch?.trim()) {
             params.append(
@@ -403,6 +346,88 @@ function Loans() {
     };
 
     // =====================================================
+    // SEARCH
+    // =====================================================
+
+    const handleSearch = (event) => {
+        event.preventDefault();
+
+        fetchLoans(
+            buildFilterUrl({
+                search,
+            })
+        );
+    };
+
+    // =====================================================
+    // STATUS FILTER
+    // =====================================================
+
+    const handleStatusChange = (event) => {
+        const value =
+            event.target.value;
+
+        setStatusFilter(value);
+
+        fetchLoans(
+            buildFilterUrl({
+                status: value,
+            })
+        );
+    };
+
+    // =====================================================
+    // BOOK FILTER
+    // =====================================================
+
+    const handleBookChange = (event) => {
+        const value =
+            event.target.value;
+
+        setBookFilter(value);
+
+        fetchLoans(
+            buildFilterUrl({
+                book: value,
+            })
+        );
+    };
+
+    // =====================================================
+    // MEMBER FILTER
+    // =====================================================
+
+    const handleMemberChange = (event) => {
+        const value =
+            event.target.value;
+
+        setMemberFilter(value);
+
+        fetchLoans(
+            buildFilterUrl({
+                member: value,
+            })
+        );
+    };
+
+    // =====================================================
+    // ORDERING
+    // =====================================================
+
+    const handleOrderingChange = (event) => {
+        const value =
+            event.target.value;
+
+        setOrdering(value);
+
+        fetchLoans(
+            buildFilterUrl({
+                ordering: value,
+            })
+        );
+    };
+
+    // =====================================================
     // CLEAR FILTERS
     // =====================================================
 
@@ -419,6 +444,75 @@ function Loans() {
     };
 
     // =====================================================
+    // APPROVE / REJECT BORROW REQUEST
+    // =====================================================
+
+    const handleRequestAction = async (
+        bookRequest,
+        action
+    ) => {
+        const actionLabel =
+            action === "approve"
+                ? "approve"
+                : "reject";
+
+        const confirmed =
+            window.confirm(
+                `Are you sure you want to ${actionLabel} this borrowing request?`
+            );
+
+        if (!confirmed) {
+            return;
+        }
+
+        setRequestActionLoading(
+            `${action}-${bookRequest.id}`
+        );
+
+        setRequestError("");
+        setRequestMessage("");
+
+        try {
+            const response =
+                await api.patch(
+                    `book-requests/${bookRequest.id}/action/`,
+                    {
+                        action,
+                    }
+                );
+
+            setRequestMessage(
+                response.data?.message ||
+                    (action === "approve"
+                        ? "Request approved and book issued successfully."
+                        : "Borrowing request rejected successfully.")
+            );
+
+            await Promise.all([
+                fetchBookRequests(),
+                fetchLoans(
+                    buildFilterUrl()
+                ),
+                fetchBooks(),
+            ]);
+        } catch (err) {
+            console.error(
+                "BOOK REQUEST ACTION ERROR:",
+                err.response?.data ||
+                    err.message
+            );
+
+            setRequestError(
+                err.response?.data?.error ||
+                    err.response?.data?.detail ||
+                    `Unable to ${actionLabel} this borrowing request.`
+            );
+        } finally {
+            setRequestActionLoading(null);
+        }
+    };
+
+    // =====================================================
     // OPEN ISSUE MODAL
     // =====================================================
 
@@ -426,7 +520,6 @@ function Loans() {
         setFormData({
             book: "",
             member: "",
-            due_date: "",
         });
 
         setFormError("");
@@ -434,7 +527,7 @@ function Loans() {
     };
 
     // =====================================================
-    // CLOSE MODAL
+    // CLOSE ISSUE MODAL
     // =====================================================
 
     const closeModal = () => {
@@ -447,7 +540,6 @@ function Loans() {
         setFormData({
             book: "",
             member: "",
-            due_date: "",
         });
 
         setFormError("");
@@ -464,7 +556,7 @@ function Loans() {
         } = event.target;
 
         setFormData(
-            previous => ({
+            (previous) => ({
                 ...previous,
                 [name]: value,
             })
@@ -494,9 +586,19 @@ function Loans() {
             return;
         }
 
-        if (!formData.due_date) {
+        const selectedBook =
+            books.find(
+                (book) =>
+                    String(book.id) ===
+                    String(formData.book)
+            );
+
+        if (
+            selectedBook &&
+            Number(selectedBook.available) <= 0
+        ) {
             setFormError(
-                "Please select a due date."
+                "This book is currently unavailable."
             );
             return;
         }
@@ -513,8 +615,6 @@ function Loans() {
                     member: Number(
                         formData.member
                     ),
-                    due_date:
-                        formData.due_date,
                 }
             );
 
@@ -523,119 +623,195 @@ function Loans() {
             setFormData({
                 book: "",
                 member: "",
-                due_date: "",
             });
 
-            setFormError("");
-
-            await fetchLoans(
-                buildFilterUrl()
-            );
-
-        } catch (error) {
+            await Promise.all([
+                fetchLoans(
+                    buildFilterUrl()
+                ),
+                fetchBooks(),
+            ]);
+        } catch (err) {
             console.error(
                 "CREATE LOAN ERROR:",
-                error.response?.data ||
-                error.message
+                err.response?.data ||
+                    err.message
             );
 
-            setFormError(
-                JSON.stringify(
-                    error.response?.data ||
-                    error.message,
-                    null,
-                    2
-                )
-            );
+            const responseData =
+                err.response?.data;
 
+            if (
+                responseData?.detail
+            ) {
+                setFormError(
+                    responseData.detail
+                );
+            } else if (
+                responseData?.error
+            ) {
+                setFormError(
+                    responseData.error
+                );
+            } else if (
+                typeof responseData ===
+                "string"
+            ) {
+                setFormError(
+                    responseData
+                );
+            } else {
+                setFormError(
+                    "Unable to issue the book."
+                );
+            }
         } finally {
             setSaving(false);
         }
     };
 
     // =====================================================
-    // RETURN BOOK
+    // OPEN RETURN MODAL
     // =====================================================
 
-    const handleReturnBook = async (loan) => {
-        const confirmed =
-            window.confirm(
-                `Return "${loan.book_title || loan.book}"?`
-            );
+    const openReturnModal = (loan) => {
+        setSelectedLoan(loan);
 
-        if (!confirmed) {
-            return;
-        }
+        setReturnCondition("normal");
+        setDamageFee("");
+        setLostFee("");
+        setReturnDescription("");
 
-        try {
-            setError("");
+        setReturnError("");
+        setReturnMessage("");
 
-            await api.post(
-                `loans/${loan.id}/return_book/`
-            );
-
-            await fetchLoans(
-                buildFilterUrl()
-            );
-
-        } catch (error) {
-            console.error(
-                "RETURN BOOK ERROR:",
-                error.response?.data ||
-                error.message
-            );
-
-            setError(
-                JSON.stringify(
-                    error.response?.data ||
-                    error.message,
-                    null,
-                    2
-                )
-            );
-        }
+        setShowReturnModal(true);
     };
 
     // =====================================================
-    // DELETE LOAN
+    // CLOSE RETURN MODAL
     // =====================================================
 
-    const handleDeleteLoan = async (loan) => {
-        const confirmed =
-            window.confirm(
-                "Are you sure you want to delete this loan?"
-            );
+    const closeReturnModal = () => {
+        if (returnSaving) {
+            return;
+        }
 
-        if (!confirmed) {
+        setShowReturnModal(false);
+        setSelectedLoan(null);
+
+        setReturnCondition("normal");
+        setDamageFee("");
+        setLostFee("");
+        setReturnDescription("");
+
+        setReturnError("");
+        setReturnMessage("");
+    };
+
+    // =====================================================
+    // PROCESS RETURN
+    // =====================================================
+
+    const handleProcessReturn = async (
+        event
+    ) => {
+        event.preventDefault();
+
+        if (!selectedLoan) {
+            return;
+        }
+
+        setReturnError("");
+        setReturnMessage("");
+
+        if (
+            returnCondition ===
+                "damaged" &&
+            Number(damageFee) <= 0
+        ) {
+            setReturnError(
+                "Please enter a valid damage fee."
+            );
+            return;
+        }
+
+        if (
+            returnCondition ===
+                "lost" &&
+            Number(lostFee) <= 0
+        ) {
+            setReturnError(
+                "Please enter a valid lost-book fee."
+            );
             return;
         }
 
         try {
-            setError("");
+            setReturnSaving(true);
 
-            await api.delete(
-                `loans/${loan.id}/`
+            const response =
+                await api.patch(
+                    `loans/${selectedLoan.id}/process-return/`,
+                    {
+                        condition:
+                            returnCondition,
+
+                        damage_fee:
+                            returnCondition ===
+                            "damaged"
+                                ? Number(
+                                      damageFee ||
+                                          0
+                                  )
+                                : 0,
+
+                        lost_fee:
+                            returnCondition ===
+                            "lost"
+                                ? Number(
+                                      lostFee ||
+                                          0
+                                  )
+                                : 0,
+
+                        description:
+                            returnDescription.trim(),
+                    }
+                );
+
+            setReturnMessage(
+                response.data?.detail ||
+                    "Book returned successfully."
             );
 
-            await fetchLoans(
-                buildFilterUrl()
-            );
+            await Promise.all([
+                fetchLoans(
+                    buildFilterUrl()
+                ),
+                fetchBooks(),
+            ]);
 
-        } catch (error) {
+            setTimeout(() => {
+                closeReturnModal();
+            }, 1000);
+        } catch (err) {
             console.error(
-                "DELETE LOAN ERROR:",
-                error.response?.data ||
-                error.message
+                "PROCESS RETURN ERROR:",
+                err.response?.data ||
+                    err.message
             );
 
-            setError(
-                JSON.stringify(
-                    error.response?.data ||
-                    error.message,
-                    null,
-                    2
-                )
+            const responseData =
+                err.response?.data;
+
+            setReturnError(
+                responseData?.detail ||
+                    responseData?.error ||
+                    "Unable to process the return."
             );
+        } finally {
+            setReturnSaving(false);
         }
     };
 
@@ -643,29 +819,130 @@ function Loans() {
     // STATUS BADGE
     // =====================================================
 
-    const getStatusBadge = (status) => {
-        if (status === "returned") {
-            return (
-                <span className="badge bg-success">
-                    Returned
-                </span>
-            );
+    const getStatusBadge = (
+        loanStatus
+    ) => {
+        switch (loanStatus) {
+            case "returned":
+                return (
+                    <span className="badge bg-success">
+                        ✓ Returned
+                    </span>
+                );
+
+            case "lost":
+                return (
+                    <span className="badge bg-dark">
+                        ✕ Lost
+                    </span>
+                );
+
+            case "return_requested":
+                return (
+                    <span className="badge bg-info text-dark">
+                        ↩ Return Requested
+                    </span>
+                );
+
+            case "overdue":
+                return (
+                    <span className="badge bg-danger">
+                        ⚠ Overdue
+                    </span>
+                );
+
+            case "borrowed":
+            default:
+                return (
+                    <span className="badge bg-warning text-dark">
+                        📖 Borrowed
+                    </span>
+                );
+        }
+    };
+
+    // =====================================================
+    // DATE FORMATTER
+    // =====================================================
+
+    const formatDate = (date) => {
+        if (!date) {
+            return "N/A";
         }
 
-        if (status === "overdue") {
-            return (
-                <span className="badge bg-danger">
-                    Overdue
-                </span>
-            );
+        const parsedDate =
+            new Date(date);
+
+        if (
+            Number.isNaN(
+                parsedDate.getTime()
+            )
+        ) {
+            return date;
         }
 
-        return (
-            <span className="badge bg-warning text-dark">
-                Borrowed
-            </span>
+        return parsedDate.toLocaleDateString(
+            undefined,
+            {
+                year: "numeric",
+                month: "short",
+                day: "numeric",
+            }
         );
     };
+
+    // =====================================================
+    // HELPERS
+    // =====================================================
+
+    const getBookTitle = (loan) => {
+        if (loan.book_title) {
+            return loan.book_title;
+        }
+
+        if (
+            typeof loan.book ===
+                "object" &&
+            loan.book !== null
+        ) {
+            return (
+                loan.book.title ||
+                loan.book.name ||
+                "Unknown Book"
+            );
+        }
+
+        return loan.book ||
+            "Unknown Book";
+    };
+
+    const getMemberName = (loan) => {
+        if (loan.member_name) {
+            return loan.member_name;
+        }
+
+        if (
+            typeof loan.member ===
+                "object" &&
+            loan.member !== null
+        ) {
+            return (
+                loan.member.name ||
+                loan.member.email ||
+                "Unknown Member"
+            );
+        }
+
+        return loan.member ||
+            "Unknown Member";
+    };
+
+    const pendingRequests =
+        bookRequests.filter(
+            (item) =>
+                item.status ===
+                "pending"
+        );
 
     // =====================================================
     // UI
@@ -686,20 +963,26 @@ function Loans() {
                     </h1>
 
                     <p className="text-muted mb-0">
-                        Search, filter and manage library loans.
+                        Search, filter and manage
+                        library loans.
                     </p>
                 </div>
 
                 <div className="d-flex align-items-center gap-2">
 
-                    <span className="badge bg-primary fs-6">
-                        {totalCount} Loans
+                    <span className="badge bg-primary fs-6 px-3 py-2">
+                        {totalCount}{" "}
+                        {totalCount === 1
+                            ? "Loan"
+                            : "Loans"}
                     </span>
 
                     {canManageLoans && (
                         <button
                             className="btn btn-primary"
-                            onClick={handleAddLoan}
+                            onClick={
+                                handleAddLoan
+                            }
                         >
                             + Issue Book
                         </button>
@@ -710,7 +993,287 @@ function Loans() {
             </div>
 
             {/* =================================================
-                SEARCH / FILTER CARD
+                BORROWING REQUESTS
+            ================================================= */}
+
+            {canManageLoans && (
+                <div className="card border-0 shadow-sm mb-4">
+
+                    <div className="card-header bg-white py-3">
+
+                        <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+
+                            <div>
+                                <h5 className="fw-bold mb-1">
+                                    🔔 Borrowing Requests
+                                </h5>
+
+                                <small className="text-muted">
+                                    Review member requests.
+                                    Approving a request creates
+                                    the loan and issues the book.
+                                </small>
+                            </div>
+
+                            <span className="badge bg-warning text-dark fs-6 px-3 py-2">
+                                {
+                                    pendingRequests.length
+                                }{" "}
+                                Pending
+                            </span>
+
+                        </div>
+
+                    </div>
+
+                    {requestMessage && (
+                        <div className="alert alert-success rounded-0 border-0 mb-0">
+                            ✅ {requestMessage}
+                        </div>
+                    )}
+
+                    {requestError && (
+                        <div className="alert alert-danger rounded-0 border-0 mb-0">
+                            ⚠️ {requestError}
+                        </div>
+                    )}
+
+                    <div className="card-body p-0">
+
+                        {requestLoading ? (
+                            <div className="text-center py-4">
+
+                                <div
+                                    className="spinner-border spinner-border-sm text-primary me-2"
+                                    role="status"
+                                />
+
+                                Loading borrowing
+                                requests...
+
+                            </div>
+                        ) : pendingRequests.length === 0 ? (
+
+                            <div className="text-center py-4">
+
+                                <div className="fs-2 mb-2">
+                                    ✓
+                                </div>
+
+                                <p className="text-muted mb-0">
+                                    No pending borrowing
+                                    requests.
+                                </p>
+
+                            </div>
+
+                        ) : (
+
+                            <div className="table-responsive">
+
+                                <table className="table table-hover align-middle mb-0">
+
+                                    <thead className="table-light">
+
+                                        <tr>
+                                            <th className="ps-3">
+                                                #
+                                            </th>
+
+                                            <th>
+                                                Member
+                                            </th>
+
+                                            <th>
+                                                Book
+                                            </th>
+
+                                            <th>
+                                                Availability
+                                            </th>
+
+                                            <th>
+                                                Requested
+                                            </th>
+
+                                            <th>
+                                                Actions
+                                            </th>
+                                        </tr>
+
+                                    </thead>
+
+                                    <tbody>
+
+                                        {pendingRequests.map(
+                                            (
+                                                item,
+                                                index
+                                            ) => {
+
+                                                const memberName =
+                                                    item.member_name ||
+                                                    item.member?.name ||
+                                                    item.member ||
+                                                    "Unknown Member";
+
+                                                const memberEmail =
+                                                    item.member_email ||
+                                                    item.member?.email ||
+                                                    "";
+
+                                                const bookTitle =
+                                                    item.book_title ||
+                                                    item.book?.title ||
+                                                    item.book ||
+                                                    "Unknown Book";
+
+                                                const available =
+                                                    item.book_available ??
+                                                    item.available ??
+                                                    item.book?.available;
+
+                                                const requestedAt =
+                                                    item.requested_at
+                                                        ? formatDate(
+                                                              item.requested_at
+                                                          )
+                                                        : "N/A";
+
+                                                const approving =
+                                                    requestActionLoading ===
+                                                    `approve-${item.id}`;
+
+                                                const rejecting =
+                                                    requestActionLoading ===
+                                                    `reject-${item.id}`;
+
+                                                return (
+                                                    <tr
+                                                        key={
+                                                            item.id
+                                                        }
+                                                    >
+
+                                                        <td className="ps-3">
+                                                            {index +
+                                                                1}
+                                                        </td>
+
+                                                        <td>
+                                                            <div className="fw-semibold">
+                                                                {
+                                                                    memberName
+                                                                }
+                                                            </div>
+
+                                                            {memberEmail && (
+                                                                <small className="text-muted">
+                                                                    {
+                                                                        memberEmail
+                                                                    }
+                                                                </small>
+                                                            )}
+                                                        </td>
+
+                                                        <td>
+                                                            {
+                                                                bookTitle
+                                                            }
+                                                        </td>
+
+                                                        <td>
+                                                            {Number(
+                                                                available
+                                                            ) >
+                                                            0 ? (
+                                                                <span className="badge bg-success">
+                                                                    {
+                                                                        available
+                                                                    }{" "}
+                                                                    available
+                                                                </span>
+                                                            ) : (
+                                                                <span className="badge bg-danger">
+                                                                    Unavailable
+                                                                </span>
+                                                            )}
+                                                        </td>
+
+                                                        <td>
+                                                            {
+                                                                requestedAt
+                                                            }
+                                                        </td>
+
+                                                        <td>
+
+                                                            <div className="d-flex flex-wrap gap-2">
+
+                                                                <button
+                                                                    className="btn btn-sm btn-success"
+                                                                    disabled={
+                                                                        approving ||
+                                                                        rejecting ||
+                                                                        Number(
+                                                                            available
+                                                                        ) <=
+                                                                            0
+                                                                    }
+                                                                    onClick={() =>
+                                                                        handleRequestAction(
+                                                                            item,
+                                                                            "approve"
+                                                                        )
+                                                                    }
+                                                                >
+                                                                    {approving
+                                                                        ? "Approving..."
+                                                                        : "✓ Approve"}
+                                                                </button>
+
+                                                                <button
+                                                                    className="btn btn-sm btn-outline-danger"
+                                                                    disabled={
+                                                                        approving ||
+                                                                        rejecting
+                                                                    }
+                                                                    onClick={() =>
+                                                                        handleRequestAction(
+                                                                            item,
+                                                                            "reject"
+                                                                        )
+                                                                    }
+                                                                >
+                                                                    {rejecting
+                                                                        ? "Rejecting..."
+                                                                        : "✕ Reject"}
+                                                                </button>
+
+                                                            </div>
+
+                                                        </td>
+
+                                                    </tr>
+                                                );
+                                            }
+                                        )}
+
+                                    </tbody>
+
+                                </table>
+
+                            </div>
+
+                        )}
+
+                    </div>
+
+                </div>
+            )}
+
+            {/* =================================================
+                FILTERS
             ================================================= */}
 
             <div className="card border-0 shadow-sm mb-4">
@@ -718,242 +1281,223 @@ function Loans() {
                 <div className="card-body">
 
                     <form
-                        onSubmit={handleSearch}
-                        className="row g-3"
+                        onSubmit={
+                            handleSearch
+                        }
                     >
 
-                        {/* SEARCH */}
+                        <div className="row g-3">
 
-                        <div className="col-lg-6">
+                            <div className="col-lg-4">
 
-                            <label className="form-label fw-semibold">
-                                Search Loans
-                            </label>
+                                <label className="form-label fw-semibold">
+                                    Search
+                                </label>
 
-                            <div className="input-group">
+                                <div className="input-group">
 
-                                <span className="input-group-text">
-                                    🔍
-                                </span>
+                                    <input
+                                        type="text"
+                                        className="form-control"
+                                        placeholder="Book, ISBN, member, email..."
+                                        value={
+                                            search
+                                        }
+                                        onChange={(
+                                            event
+                                        ) =>
+                                            setSearch(
+                                                event
+                                                    .target
+                                                    .value
+                                            )
+                                        }
+                                    />
 
-                                <input
-                                    type="text"
-                                    className="form-control"
-                                    placeholder="Book, ISBN, member, email, phone or status..."
-                                    value={search}
-                                    onChange={(event) =>
-                                        setSearch(
-                                            event.target.value
-                                        )
-                                    }
-                                />
+                                    <button
+                                        className="btn btn-primary"
+                                        type="submit"
+                                    >
+                                        🔍 Search
+                                    </button>
+
+                                </div>
 
                             </div>
 
-                            <small className="text-muted">
-                                Search using the first few characters or a complete value.
-                            </small>
+                            <div className="col-md-4 col-lg-2">
 
-                        </div>
-
-                        {/* STATUS */}
-
-                        <div className="col-lg-3">
-
-                            <label className="form-label fw-semibold">
-                                Status
-                            </label>
-
-                            <select
-                                className="form-select"
-                                value={statusFilter}
-                                onChange={
-                                    handleStatusChange
-                                }
-                            >
-
-                                <option value="">
-                                    All Statuses
-                                </option>
-
-                                <option value="borrowed">
-                                    Borrowed
-                                </option>
-
-                                <option value="returned">
-                                    Returned
-                                </option>
-
-                                <option value="overdue">
-                                    Overdue
-                                </option>
-
-                            </select>
-
-                        </div>
-
-                        {/* ORDERING */}
-
-                        <div className="col-lg-3">
-
-                            <label className="form-label fw-semibold">
-                                Sort By
-                            </label>
-
-                            <select
-                                className="form-select"
-                                value={ordering}
-                                onChange={
-                                    handleOrderingChange
-                                }
-                            >
-
-                                <option value="-borrow_date">
-                                    Newest Borrowed
-                                </option>
-
-                                <option value="borrow_date">
-                                    Oldest Borrowed
-                                </option>
-
-                                <option value="-due_date">
-                                    Latest Due Date
-                                </option>
-
-                                <option value="due_date">
-                                    Earliest Due Date
-                                </option>
-
-                                <option value="-return_date">
-                                    Recently Returned
-                                </option>
-
-                                <option value="return_date">
-                                    Oldest Returned
-                                </option>
-
-                                <option value="book__title">
-                                    Book A-Z
-                                </option>
-
-                                <option value="-book__title">
-                                    Book Z-A
-                                </option>
-
-                                <option value="member__name">
-                                    Member A-Z
-                                </option>
-
-                                <option value="-member__name">
-                                    Member Z-A
-                                </option>
-
-                                <option value="status">
+                                <label className="form-label fw-semibold">
                                     Status
-                                </option>
+                                </label>
 
-                            </select>
+                                <select
+                                    className="form-select"
+                                    value={
+                                        statusFilter
+                                    }
+                                    onChange={
+                                        handleStatusChange
+                                    }
+                                >
+                                    <option value="">
+                                        All statuses
+                                    </option>
+
+                                    <option value="borrowed">
+                                        Borrowed
+                                    </option>
+
+                                    <option value="overdue">
+                                        Overdue
+                                    </option>
+
+                                    <option value="return_requested">
+                                        Return Requested
+                                    </option>
+
+                                    <option value="returned">
+                                        Returned
+                                    </option>
+
+                                    <option value="lost">
+                                        Lost
+                                    </option>
+                                </select>
+
+                            </div>
+
+                            <div className="col-md-4 col-lg-3">
+
+                                <label className="form-label fw-semibold">
+                                    Book
+                                </label>
+
+                                <select
+                                    className="form-select"
+                                    value={
+                                        bookFilter
+                                    }
+                                    onChange={
+                                        handleBookChange
+                                    }
+                                >
+
+                                    <option value="">
+                                        All books
+                                    </option>
+
+                                    {books.map(
+                                        (book) => (
+                                            <option
+                                                key={
+                                                    book.id
+                                                }
+                                                value={
+                                                    book.id
+                                                }
+                                            >
+                                                {
+                                                    book.title
+                                                }
+                                            </option>
+                                        )
+                                    )}
+
+                                </select>
+
+                            </div>
+
+                            <div className="col-md-4 col-lg-3">
+
+                                <label className="form-label fw-semibold">
+                                    Member
+                                </label>
+
+                                <select
+                                    className="form-select"
+                                    value={
+                                        memberFilter
+                                    }
+                                    onChange={
+                                        handleMemberChange
+                                    }
+                                >
+
+                                    <option value="">
+                                        All members
+                                    </option>
+
+                                    {members.map(
+                                        (member) => (
+                                            <option
+                                                key={
+                                                    member.id
+                                                }
+                                                value={
+                                                    member.id
+                                                }
+                                            >
+                                                {
+                                                    member.name
+                                                }
+                                            </option>
+                                        )
+                                    )}
+
+                                </select>
+
+                            </div>
 
                         </div>
 
-                        {/* BOOK FILTER */}
+                        <div className="row mt-3">
 
-                        <div className="col-lg-5">
+                            <div className="col-md-4">
 
-                            <label className="form-label fw-semibold">
-                                Book
-                            </label>
+                                <label className="form-label fw-semibold">
+                                    Order By
+                                </label>
 
-                            <select
-                                className="form-select"
-                                value={bookFilter}
-                                onChange={
-                                    handleBookChange
-                                }
-                            >
+                                <select
+                                    className="form-select"
+                                    value={
+                                        ordering
+                                    }
+                                    onChange={
+                                        handleOrderingChange
+                                    }
+                                >
+                                    <option value="-borrow_date">
+                                        Newest borrowed
+                                    </option>
 
-                                <option value="">
-                                    All Books
-                                </option>
+                                    <option value="borrow_date">
+                                        Oldest borrowed
+                                    </option>
 
-                                {books.map(
-                                    book => (
-                                        <option
-                                            key={book.id}
-                                            value={book.id}
-                                        >
-                                            {book.title}
-                                            {book.isbn
-                                                ? ` (${book.isbn})`
-                                                : ""}
-                                        </option>
-                                    )
-                                )}
+                                    <option value="due_date">
+                                        Due date
+                                    </option>
 
-                            </select>
+                                    <option value="-due_date">
+                                        Latest due date
+                                    </option>
 
-                        </div>
+                                    <option value="status">
+                                        Status
+                                    </option>
 
-                        {/* MEMBER FILTER */}
+                                    <option value="book__title">
+                                        Book title
+                                    </option>
 
-                        <div className="col-lg-4">
+                                    <option value="member__name">
+                                        Member name
+                                    </option>
+                                </select>
 
-                            <label className="form-label fw-semibold">
-                                Member
-                            </label>
-
-                            <select
-                                className="form-select"
-                                value={memberFilter}
-                                onChange={
-                                    handleMemberChange
-                                }
-                            >
-
-                                <option value="">
-                                    All Members
-                                </option>
-
-                                {members.map(
-                                    member => (
-                                        <option
-                                            key={member.id}
-                                            value={member.id}
-                                        >
-                                            {member.name}
-                                            {member.email
-                                                ? ` - ${member.email}`
-                                                : ""}
-                                        </option>
-                                    )
-                                )}
-
-                            </select>
-
-                        </div>
-
-                        {/* BUTTONS */}
-
-                        <div className="col-lg-3 d-flex align-items-end gap-2">
-
-                            <button
-                                type="submit"
-                                className="btn btn-primary flex-grow-1"
-                                disabled={loading}
-                            >
-                                🔍 Search
-                            </button>
-
-                            <button
-                                type="button"
-                                className="btn btn-outline-secondary"
-                                onClick={
-                                    handleClearFilters
-                                }
-                                disabled={loading}
-                            >
-                                Clear
-                            </button>
+                            </div>
 
                         </div>
 
@@ -964,7 +1508,7 @@ function Loans() {
             </div>
 
             {/* =================================================
-                ACTIVE FILTER SUMMARY
+                ACTIVE FILTERS
             ================================================= */}
 
             {(search.trim() ||
@@ -972,35 +1516,51 @@ function Loans() {
                 bookFilter ||
                 memberFilter) && (
 
-                <div className="alert alert-light border d-flex flex-wrap align-items-center gap-2 mb-4">
+                <div className="alert alert-light border mb-4">
 
-                    <strong>
-                        Active filters:
-                    </strong>
+                    <div className="d-flex flex-wrap align-items-center gap-2">
 
-                    {search.trim() && (
-                        <span className="badge bg-primary">
-                            Search: {search.trim()}
-                        </span>
-                    )}
+                        <strong>
+                            Active filters:
+                        </strong>
 
-                    {statusFilter && (
-                        <span className="badge bg-secondary">
-                            Status: {statusFilter}
-                        </span>
-                    )}
+                        {search.trim() && (
+                            <span className="badge bg-primary">
+                                Search:{" "}
+                                {search.trim()}
+                            </span>
+                        )}
 
-                    {bookFilter && (
-                        <span className="badge bg-secondary">
-                            Book filter active
-                        </span>
-                    )}
+                        {statusFilter && (
+                            <span className="badge bg-secondary">
+                                Status:{" "}
+                                {statusFilter}
+                            </span>
+                        )}
 
-                    {memberFilter && (
-                        <span className="badge bg-secondary">
-                            Member filter active
-                        </span>
-                    )}
+                        {bookFilter && (
+                            <span className="badge bg-secondary">
+                                Book filter active
+                            </span>
+                        )}
+
+                        {memberFilter && (
+                            <span className="badge bg-secondary">
+                                Member filter active
+                            </span>
+                        )}
+
+                        <button
+                            type="button"
+                            className="btn btn-sm btn-link text-decoration-none ms-auto"
+                            onClick={
+                                handleClearFilters
+                            }
+                        >
+                            Clear all
+                        </button>
+
+                    </div>
 
                 </div>
             )}
@@ -1010,29 +1570,47 @@ function Loans() {
             ================================================= */}
 
             {error && (
-                <div
-                    className="alert alert-danger"
-                    role="alert"
-                >
 
-                    <h6 className="fw-bold">
-                        Unable to complete request
-                    </h6>
+                <div className="alert alert-danger">
 
-                    <pre className="mb-0">
-                        {error}
-                    </pre>
+                    <div className="d-flex gap-3">
 
-                    <button
-                        className="btn btn-outline-danger btn-sm mt-3"
-                        onClick={() =>
-                            fetchLoans(
-                                buildFilterUrl()
-                            )
-                        }
-                    >
-                        🔄 Try Again
-                    </button>
+                        <div className="fs-4">
+                            ⚠️
+                        </div>
+
+                        <div className="flex-grow-1">
+
+                            <h6 className="fw-bold">
+                                Unable to load loans
+                            </h6>
+
+                            <pre
+                                className="mb-0"
+                                style={{
+                                    whiteSpace:
+                                        "pre-wrap",
+                                    wordBreak:
+                                        "break-word",
+                                }}
+                            >
+                                {error}
+                            </pre>
+
+                            <button
+                                className="btn btn-outline-danger btn-sm mt-3"
+                                onClick={() =>
+                                    fetchLoans(
+                                        buildFilterUrl()
+                                    )
+                                }
+                            >
+                                🔄 Try Again
+                            </button>
+
+                        </div>
+
+                    </div>
 
                 </div>
             )}
@@ -1042,20 +1620,26 @@ function Loans() {
             ================================================= */}
 
             {loading && (
-                <div className="text-center py-5">
 
-                    <div
-                        className="spinner-border text-primary"
-                        role="status"
-                    >
-                        <span className="visually-hidden">
-                            Loading...
-                        </span>
+                <div className="card border-0 shadow-sm">
+
+                    <div className="card-body text-center py-5">
+
+                        <div
+                            className="spinner-border text-primary mb-3"
+                            role="status"
+                        />
+
+                        <h6 className="fw-semibold">
+                            Loading loans...
+                        </h6>
+
+                        <p className="text-muted mb-0">
+                            Please wait while we fetch
+                            the latest loan information.
+                        </p>
+
                     </div>
-
-                    <p className="text-muted mt-3 mb-0">
-                        Loading loans...
-                    </p>
 
                 </div>
             )}
@@ -1072,7 +1656,7 @@ function Loans() {
 
                         <div className="card-body text-center py-5">
 
-                            <div className="fs-1 mb-3">
+                            <div className="display-4 mb-3">
                                 📚
                             </div>
 
@@ -1081,17 +1665,24 @@ function Loans() {
                             </h5>
 
                             <p className="text-muted mb-3">
-                                No loans match your current search or filters.
+                                No loans match your current
+                                search or filters.
                             </p>
 
-                            <button
-                                className="btn btn-outline-primary"
-                                onClick={
-                                    handleClearFilters
-                                }
-                            >
-                                Clear Filters
-                            </button>
+                            {(search.trim() ||
+                                statusFilter ||
+                                bookFilter ||
+                                memberFilter) && (
+
+                                <button
+                                    className="btn btn-outline-primary"
+                                    onClick={
+                                        handleClearFilters
+                                    }
+                                >
+                                    Clear Filters
+                                </button>
+                            )}
 
                         </div>
 
@@ -1103,20 +1694,28 @@ function Loans() {
             ================================================= */}
 
             {!loading &&
+                !error &&
                 loans.length > 0 && (
 
                     <div className="card border-0 shadow-sm">
 
                         <div className="card-header bg-white py-3">
 
-                            <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+                            <div className="d-flex justify-content-between align-items-center">
 
-                                <h5 className="fw-bold mb-0">
-                                    Loans List
-                                </h5>
+                                <div>
+                                    <h5 className="fw-bold mb-1">
+                                        Loan Records
+                                    </h5>
 
-                                <span className="text-muted">
-                                    Showing {loans.length} of {totalCount} loans
+                                    <small className="text-muted">
+                                        Manage borrowing,
+                                        returns and loan status.
+                                    </small>
+                                </div>
+
+                                <span className="badge bg-primary-subtle text-primary px-3 py-2">
+                                    {loans.length} shown
                                 </span>
 
                             </div>
@@ -1129,17 +1728,37 @@ function Loans() {
 
                                 <table className="table table-hover align-middle mb-0">
 
-                                    <thead className="table-dark">
+                                    <thead className="table-light">
 
                                         <tr>
 
-                                            <th>#</th>
-                                            <th>Book</th>
-                                            <th>Member</th>
-                                            <th>Status</th>
-                                            <th>Borrowed</th>
-                                            <th>Due Date</th>
-                                            <th>Returned</th>
+                                            <th className="ps-3">
+                                                #
+                                            </th>
+
+                                            <th>
+                                                Book
+                                            </th>
+
+                                            <th>
+                                                Member
+                                            </th>
+
+                                            <th>
+                                                Status
+                                            </th>
+
+                                            <th>
+                                                Borrowed
+                                            </th>
+
+                                            <th>
+                                                Due
+                                            </th>
+
+                                            <th>
+                                                Returned
+                                            </th>
 
                                             {canManageLoans && (
                                                 <th>
@@ -1157,113 +1776,147 @@ function Loans() {
                                             (
                                                 loan,
                                                 index
-                                            ) => (
+                                            ) => {
 
-                                                <tr
-                                                    key={
-                                                        loan.id
-                                                    }
-                                                >
+                                                const title =
+                                                    getBookTitle(
+                                                        loan
+                                                    );
 
-                                                    <td className="text-muted">
-                                                        {index + 1}
-                                                    </td>
+                                                const member =
+                                                    getMemberName(
+                                                        loan
+                                                    );
 
-                                                    <td>
-                                                        <div className="fw-semibold">
-                                                            {loan.book_title ||
-                                                                loan.book}
-                                                        </div>
+                                                const canReturn =
+                                                    [
+                                                        "borrowed",
+                                                        "overdue",
+                                                        "return_requested",
+                                                    ].includes(
+                                                        loan.status
+                                                    );
 
-                                                        {loan.book_isbn && (
-                                                            <small className="text-muted">
-                                                                ISBN:{" "}
-                                                                {
-                                                                    loan.book_isbn
-                                                                }
-                                                            </small>
-                                                        )}
-                                                    </td>
+                                                return (
+                                                    <tr
+                                                        key={
+                                                            loan.id
+                                                        }
+                                                    >
 
-                                                    <td>
-                                                        <div>
-                                                            {loan.member_name ||
-                                                                loan.member}
-                                                        </div>
+                                                        <td className="ps-3 text-muted">
+                                                            {
+                                                                index +
+                                                                1
+                                                            }
+                                                        </td>
 
-                                                        {loan.member_email && (
-                                                            <small className="text-muted">
-                                                                {
-                                                                    loan.member_email
-                                                                }
-                                                            </small>
-                                                        )}
-                                                    </td>
-
-                                                    <td>
-                                                        {getStatusBadge(
-                                                            loan.status
-                                                        )}
-                                                    </td>
-
-                                                    <td>
-                                                        {loan.borrow_date}
-                                                    </td>
-
-                                                    <td>
-                                                        {loan.due_date}
-                                                    </td>
-
-                                                    <td>
-                                                        {loan.return_date ? (
-                                                            loan.return_date
-                                                        ) : (
-                                                            <span className="text-muted">
-                                                                Not returned
-                                                            </span>
-                                                        )}
-                                                    </td>
-
-                                                    {canManageLoans && (
                                                         <td>
 
-                                                            <div className="d-flex flex-wrap gap-2">
-
-                                                                {loan.status !==
-                                                                    "returned" && (
-                                                                    <button
-                                                                        className="btn btn-sm btn-outline-success"
-                                                                        onClick={() =>
-                                                                            handleReturnBook(
-                                                                                loan
-                                                                            )
-                                                                        }
-                                                                    >
-                                                                        ↩️ Return
-                                                                    </button>
-                                                                )}
-
-                                                                {canEditLoans && (
-                                                                    <button
-                                                                        className="btn btn-sm btn-outline-danger"
-                                                                        onClick={() =>
-                                                                            handleDeleteLoan(
-                                                                                loan
-                                                                            )
-                                                                        }
-                                                                    >
-                                                                        🗑️ Delete
-                                                                    </button>
-                                                                )}
-
+                                                            <div className="fw-semibold">
+                                                                {
+                                                                    title
+                                                                }
                                                             </div>
 
+                                                            {loan.book_isbn && (
+                                                                <small className="text-muted">
+                                                                    ISBN:{" "}
+                                                                    {
+                                                                        loan.book_isbn
+                                                                    }
+                                                                </small>
+                                                            )}
+
                                                         </td>
-                                                    )}
 
-                                                </tr>
+                                                        <td>
 
-                                            )
+                                                            <div className="fw-semibold">
+                                                                {
+                                                                    member
+                                                                }
+                                                            </div>
+
+                                                            {loan.member_email && (
+                                                                <small className="text-muted">
+                                                                    {
+                                                                        loan.member_email
+                                                                    }
+                                                                </small>
+                                                            )}
+
+                                                        </td>
+
+                                                        <td>
+                                                            {
+                                                                getStatusBadge(
+                                                                    loan.status
+                                                                )
+                                                            }
+                                                        </td>
+
+                                                        <td>
+                                                            {
+                                                                formatDate(
+                                                                    loan.borrow_date
+                                                                )
+                                                            }
+                                                        </td>
+
+                                                        <td>
+                                                            {
+                                                                formatDate(
+                                                                    loan.due_date
+                                                                )
+                                                            }
+                                                        </td>
+
+                                                        <td>
+
+                                                            {loan.return_date ? (
+                                                                <span className="text-success">
+                                                                    {
+                                                                        formatDate(
+                                                                            loan.return_date
+                                                                        )
+                                                                    }
+                                                                </span>
+                                                            ) : (
+                                                                <span className="text-muted">
+                                                                    Not returned
+                                                                </span>
+                                                            )}
+
+                                                        </td>
+
+                                                        {canManageLoans && (
+                                                            <td>
+
+                                                                {canReturn ? (
+                                                                    <button
+                                                                        type="button"
+                                                                        className="btn btn-sm btn-outline-success"
+                                                                        onClick={() =>
+                                                                            openReturnModal(
+                                                                                loan
+                                                                            )
+                                                                        }
+                                                                    >
+                                                                        ↩ Process Return
+                                                                    </button>
+                                                                ) : (
+                                                                    <span className="text-muted small">
+                                                                        No action
+                                                                    </span>
+                                                                )}
+
+                                                            </td>
+                                                        )}
+
+                                                    </tr>
+                                                );
+                                            }
                                         )}
 
                                     </tbody>
@@ -1289,6 +1942,7 @@ function Loans() {
                     <div className="d-flex flex-column flex-sm-row justify-content-between align-items-center gap-3 mt-4">
 
                         <button
+                            type="button"
                             className="btn btn-outline-primary"
                             disabled={
                                 !previousPage ||
@@ -1304,10 +1958,18 @@ function Loans() {
                         </button>
 
                         <span className="text-muted">
-                            Showing {loans.length} results
+                            Showing{" "}
+                            <strong>
+                                {loans.length}
+                            </strong>{" "}
+                            of{" "}
+                            <strong>
+                                {totalCount}
+                            </strong>
                         </span>
 
                         <button
+                            type="button"
                             className="btn btn-outline-primary"
                             disabled={
                                 !nextPage ||
@@ -1331,242 +1993,512 @@ function Loans() {
 
             {showModal && (
 
-                <div
-                    className="modal fade show d-block"
-                    tabIndex="-1"
-                    role="dialog"
-                >
+                <>
 
-                    <div className="modal-dialog modal-dialog-centered">
+                    <div
+                        className="modal fade show d-block"
+                        tabIndex="-1"
+                        role="dialog"
+                        aria-modal="true"
+                    >
 
-                        <div className="modal-content">
+                        <div className="modal-dialog modal-dialog-centered">
 
-                            <div className="modal-header">
+                            <div className="modal-content">
 
-                                <h5 className="modal-title fw-bold">
-                                    📚 Issue Book
-                                </h5>
+                                <div className="modal-header">
 
-                                <button
-                                    type="button"
-                                    className="btn-close"
-                                    onClick={closeModal}
-                                    disabled={saving}
-                                />
+                                    <div>
 
-                            </div>
+                                        <h5 className="modal-title fw-bold mb-1">
+                                            📚 Issue Book
+                                        </h5>
 
-                            <form
-                                onSubmit={
-                                    handleSubmit
-                                }
-                            >
-
-                                <div className="modal-body">
-
-                                    {formError && (
-                                        <div className="alert alert-danger">
-
-                                            <pre className="mb-0">
-                                                {formError}
-                                            </pre>
-
-                                        </div>
-                                    )}
-
-                                    {/* BOOK */}
-
-                                    <div className="mb-3">
-
-                                        <label className="form-label fw-semibold">
-                                            Book
-                                        </label>
-
-                                        <select
-                                            name="book"
-                                            className="form-select"
-                                            value={
-                                                formData.book
-                                            }
-                                            onChange={
-                                                handleFormChange
-                                            }
-                                            disabled={
-                                                saving
-                                            }
-                                        >
-
-                                            <option value="">
-                                                Select a book
-                                            </option>
-
-                                            {books.map(
-                                                book => (
-
-                                                    <option
-                                                        key={
-                                                            book.id
-                                                        }
-                                                        value={
-                                                            book.id
-                                                        }
-                                                        disabled={
-                                                            book.available <=
-                                                            0
-                                                        }
-                                                    >
-                                                        {book.title}
-                                                        {" "}
-                                                        (
-                                                        {
-                                                            book.available
-                                                        }
-                                                        {" "}
-                                                        available)
-                                                    </option>
-
-                                                )
-                                            )}
-
-                                        </select>
+                                        <small className="text-muted">
+                                            Issue an available book
+                                            to a member.
+                                        </small>
 
                                     </div>
-
-                                    {/* MEMBER */}
-
-                                    <div className="mb-3">
-
-                                        <label className="form-label fw-semibold">
-                                            Member
-                                        </label>
-
-                                        <select
-                                            name="member"
-                                            className="form-select"
-                                            value={
-                                                formData.member
-                                            }
-                                            onChange={
-                                                handleFormChange
-                                            }
-                                            disabled={
-                                                saving
-                                            }
-                                        >
-
-                                            <option value="">
-                                                Select a member
-                                            </option>
-
-                                            {members.map(
-                                                member => (
-
-                                                    <option
-                                                        key={
-                                                            member.id
-                                                        }
-                                                        value={
-                                                            member.id
-                                                        }
-                                                    >
-                                                        {member.name}
-                                                        {" - "}
-                                                        {member.email}
-                                                    </option>
-
-                                                )
-                                            )}
-
-                                        </select>
-
-                                    </div>
-
-                                    {/* DUE DATE */}
-
-                                    <div className="mb-3">
-
-                                        <label className="form-label fw-semibold">
-                                            Due Date
-                                        </label>
-
-                                        <input
-                                            type="date"
-                                            name="due_date"
-                                            className="form-control"
-                                            value={
-                                                formData.due_date
-                                            }
-                                            onChange={
-                                                handleFormChange
-                                            }
-                                            disabled={
-                                                saving
-                                            }
-                                        />
-
-                                    </div>
-
-                                </div>
-
-                                <div className="modal-footer">
 
                                     <button
                                         type="button"
-                                        className="btn btn-secondary"
+                                        className="btn-close"
                                         onClick={
                                             closeModal
                                         }
                                         disabled={
                                             saving
                                         }
-                                    >
-                                        Cancel
-                                    </button>
-
-                                    <button
-                                        type="submit"
-                                        className="btn btn-primary"
-                                        disabled={
-                                            saving
-                                        }
-                                    >
-
-                                        {saving ? (
-                                            <>
-                                                <span
-                                                    className="spinner-border spinner-border-sm me-2"
-                                                    role="status"
-                                                />
-
-                                                Issuing...
-                                            </>
-                                        ) : (
-                                            "Issue Book"
-                                        )}
-
-                                    </button>
+                                    />
 
                                 </div>
 
-                            </form>
+                                <form
+                                    onSubmit={
+                                        handleSubmit
+                                    }
+                                >
+
+                                    <div className="modal-body">
+
+                                        {formError && (
+
+                                            <div className="alert alert-danger">
+
+                                                ⚠️{" "}
+                                                {formError}
+
+                                            </div>
+                                        )}
+
+                                        <div className="mb-3">
+
+                                            <label className="form-label fw-semibold">
+                                                Book
+                                            </label>
+
+                                            <select
+                                                name="book"
+                                                className="form-select"
+                                                value={
+                                                    formData.book
+                                                }
+                                                onChange={
+                                                    handleFormChange
+                                                }
+                                                disabled={
+                                                    saving
+                                                }
+                                                required
+                                            >
+
+                                                <option value="">
+                                                    Select an available book
+                                                </option>
+
+                                                {books
+                                                    .filter(
+                                                        (
+                                                            book
+                                                        ) =>
+                                                            Number(
+                                                                book.available
+                                                            ) >
+                                                            0
+                                                    )
+                                                    .map(
+                                                        (
+                                                            book
+                                                        ) => (
+                                                            <option
+                                                                key={
+                                                                    book.id
+                                                                }
+                                                                value={
+                                                                    book.id
+                                                                }
+                                                            >
+                                                                {
+                                                                    book.title
+                                                                }{" "}
+                                                                (
+                                                                {
+                                                                    book.available
+                                                                }{" "}
+                                                                available)
+                                                            </option>
+                                                        )
+                                                    )}
+
+                                            </select>
+
+                                        </div>
+
+                                        <div className="mb-3">
+
+                                            <label className="form-label fw-semibold">
+                                                Member
+                                            </label>
+
+                                            <select
+                                                name="member"
+                                                className="form-select"
+                                                value={
+                                                    formData.member
+                                                }
+                                                onChange={
+                                                    handleFormChange
+                                                }
+                                                disabled={
+                                                    saving
+                                                }
+                                                required
+                                            >
+
+                                                <option value="">
+                                                    Select member
+                                                </option>
+
+                                                {members.map(
+                                                    (
+                                                        member
+                                                    ) => (
+                                                        <option
+                                                            key={
+                                                                member.id
+                                                            }
+                                                            value={
+                                                                member.id
+                                                            }
+                                                        >
+                                                            {
+                                                                member.name
+                                                            }
+                                                        </option>
+                                                    )
+                                                )}
+
+                                            </select>
+
+                                        </div>
+
+                                        <div className="alert alert-info mb-0">
+
+                                            <strong>
+                                                Borrowing fee:
+                                            </strong>{" "}
+                                            ₹0. Issuing a book
+                                            is free.
+
+                                        </div>
+
+                                    </div>
+
+                                    <div className="modal-footer">
+
+                                        <button
+                                            type="button"
+                                            className="btn btn-secondary"
+                                            onClick={
+                                                closeModal
+                                            }
+                                            disabled={
+                                                saving
+                                            }
+                                        >
+                                            Cancel
+                                        </button>
+
+                                        <button
+                                            type="submit"
+                                            className="btn btn-primary"
+                                            disabled={
+                                                saving
+                                            }
+                                        >
+                                            {saving ? (
+                                                <>
+                                                    <span className="spinner-border spinner-border-sm me-2" />
+                                                    Issuing...
+                                                </>
+                                            ) : (
+                                                "Issue Book"
+                                            )}
+                                        </button>
+
+                                    </div>
+
+                                </form>
+
+                            </div>
 
                         </div>
 
                     </div>
 
-                </div>
+                    <div className="modal-backdrop fade show" />
+
+                </>
             )}
 
             {/* =================================================
-                BACKDROP
+                PROCESS RETURN MODAL
             ================================================= */}
 
-            {showModal && (
-                <div
-                    className="modal-backdrop fade show"
-                    onClick={closeModal}
-                />
-            )}
+            {showReturnModal &&
+                selectedLoan && (
+
+                    <>
+
+                        <div
+                            className="modal fade show d-block"
+                            tabIndex="-1"
+                            role="dialog"
+                            aria-modal="true"
+                        >
+
+                            <div className="modal-dialog modal-dialog-centered">
+
+                                <div className="modal-content">
+
+                                    <div className="modal-header">
+
+                                        <div>
+
+                                            <h5 className="modal-title fw-bold mb-1">
+                                                ↩ Process Book Return
+                                            </h5>
+
+                                            <small className="text-muted">
+                                                {
+                                                    getBookTitle(
+                                                        selectedLoan
+                                                    )
+                                                }
+                                            </small>
+
+                                        </div>
+
+                                        <button
+                                            type="button"
+                                            className="btn-close"
+                                            onClick={
+                                                closeReturnModal
+                                            }
+                                            disabled={
+                                                returnSaving
+                                            }
+                                        />
+
+                                    </div>
+
+                                    <form
+                                        onSubmit={
+                                            handleProcessReturn
+                                        }
+                                    >
+
+                                        <div className="modal-body">
+
+                                            {returnError && (
+                                                <div className="alert alert-danger">
+                                                    ⚠️{" "}
+                                                    {
+                                                        returnError
+                                                    }
+                                                </div>
+                                            )}
+
+                                            {returnMessage && (
+                                                <div className="alert alert-success">
+                                                    ✅{" "}
+                                                    {
+                                                        returnMessage
+                                                    }
+                                                </div>
+                                            )}
+
+                                            <div className="mb-3">
+
+                                                <label className="form-label fw-semibold">
+                                                    Book Condition
+                                                </label>
+
+                                                <select
+                                                    className="form-select"
+                                                    value={
+                                                        returnCondition
+                                                    }
+                                                    onChange={(
+                                                        event
+                                                    ) =>
+                                                        setReturnCondition(
+                                                            event
+                                                                .target
+                                                                .value
+                                                        )
+                                                    }
+                                                    disabled={
+                                                        returnSaving
+                                                    }
+                                                >
+
+                                                    <option value="normal">
+                                                        Normal
+                                                    </option>
+
+                                                    <option value="damaged">
+                                                        Damaged
+                                                    </option>
+
+                                                    <option value="lost">
+                                                        Lost
+                                                    </option>
+
+                                                </select>
+
+                                            </div>
+
+                                            {returnCondition ===
+                                                "damaged" && (
+
+                                                <div className="mb-3">
+
+                                                    <label className="form-label fw-semibold">
+                                                        Damage Fee (₹)
+                                                    </label>
+
+                                                    <input
+                                                        type="number"
+                                                        min="0"
+                                                        step="0.01"
+                                                        className="form-control"
+                                                        value={
+                                                            damageFee
+                                                        }
+                                                        onChange={(
+                                                            event
+                                                        ) =>
+                                                            setDamageFee(
+                                                                event
+                                                                    .target
+                                                                    .value
+                                                            )
+                                                        }
+                                                        placeholder="Enter damage fee"
+                                                        disabled={
+                                                            returnSaving
+                                                        }
+                                                    />
+
+                                                </div>
+                                            )}
+
+                                            {returnCondition ===
+                                                "lost" && (
+
+                                                <div className="mb-3">
+
+                                                    <label className="form-label fw-semibold">
+                                                        Lost Book Fee (₹)
+                                                    </label>
+
+                                                    <input
+                                                        type="number"
+                                                        min="0"
+                                                        step="0.01"
+                                                        className="form-control"
+                                                        value={
+                                                            lostFee
+                                                        }
+                                                        onChange={(
+                                                            event
+                                                        ) =>
+                                                            setLostFee(
+                                                                event
+                                                                    .target
+                                                                    .value
+                                                            )
+                                                        }
+                                                        placeholder="Enter lost-book fee"
+                                                        disabled={
+                                                            returnSaving
+                                                        }
+                                                    />
+
+                                                </div>
+                                            )}
+
+                                            <div className="mb-3">
+
+                                                <label className="form-label fw-semibold">
+                                                    Description
+                                                </label>
+
+                                                <textarea
+                                                    className="form-control"
+                                                    rows="3"
+                                                    value={
+                                                        returnDescription
+                                                    }
+                                                    onChange={(
+                                                        event
+                                                    ) =>
+                                                        setReturnDescription(
+                                                            event
+                                                                .target
+                                                                .value
+                                                        )
+                                                    }
+                                                    placeholder="Optional notes about the return..."
+                                                    disabled={
+                                                        returnSaving
+                                                    }
+                                                />
+
+                                            </div>
+
+                                            <div className="alert alert-info mb-0">
+
+                                                <strong>
+                                                    Late fee:
+                                                </strong>{" "}
+                                                Automatically
+                                                calculated at
+                                                ₹10 per overdue
+                                                day.
+
+                                            </div>
+
+                                        </div>
+
+                                        <div className="modal-footer">
+
+                                            <button
+                                                type="button"
+                                                className="btn btn-secondary"
+                                                onClick={
+                                                    closeReturnModal
+                                                }
+                                                disabled={
+                                                    returnSaving
+                                                }
+                                            >
+                                                Cancel
+                                            </button>
+
+                                            <button
+                                                type="submit"
+                                                className="btn btn-success"
+                                                disabled={
+                                                    returnSaving
+                                                }
+                                            >
+                                                {returnSaving ? (
+                                                    <>
+                                                        <span className="spinner-border spinner-border-sm me-2" />
+                                                        Processing...
+                                                    </>
+                                                ) : (
+                                                    "✓ Process Return"
+                                                )}
+                                            </button>
+
+                                        </div>
+
+                                    </form>
+
+                                </div>
+
+                            </div>
+
+                        </div>
+
+                        <div className="modal-backdrop fade show" />
+
+                    </>
+                )}
 
         </div>
     );

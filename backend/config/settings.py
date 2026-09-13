@@ -12,6 +12,8 @@ https://docs.djangoproject.com/en/6.1/ref/settings/
 
 from pathlib import Path
 from datetime import timedelta
+import os
+from dotenv import load_dotenv
 
 
 # ==========================================
@@ -19,6 +21,7 @@ from datetime import timedelta
 # ==========================================
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / ".env")
 
 
 # ==========================================
@@ -342,3 +345,13 @@ SIMPLE_JWT = {
         ('Bearer',),
 
 }
+
+RAZORPAY_KEY_ID = os.getenv(
+    "RAZORPAY_KEY_ID",
+    ""
+)
+
+RAZORPAY_KEY_SECRET = os.getenv(
+    "RAZORPAY_KEY_SECRET",
+    ""
+)
