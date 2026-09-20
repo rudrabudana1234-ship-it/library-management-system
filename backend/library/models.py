@@ -89,6 +89,25 @@ class Book(models.Model):
         default=1
     )
 
+    edition = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        help_text="e.g. '2nd Edition', 'Revised Edition'"
+    )
+
+    edition_year = models.PositiveIntegerField(
+        blank=True,
+        null=True,
+        help_text="Year this edition was published, e.g. 2021"
+    )
+
+    description = models.TextField(
+        blank=True,
+        null=True,
+        help_text="Book description or summary"
+    )
+
     cover = models.ImageField(
         upload_to='book_covers/',
         blank=True,
@@ -451,6 +470,139 @@ class BookRequest(models.Model):
             f"{self.book.title} "
             f"({self.status})"
         )
+
+
+# =========================================================
+# RESERVATION / WAITLIST
+# =========================================================
+
+class Reservation(models.Model):
+
+    STATUS_CHOICES = [
+        ('waiting', 'Waiting'),
+        ('available', 'Available'),
+        ('borrowed', 'Borrowed'),
+        ('cancelled', 'Cancelled'),
+        ('expired', 'Expired'),
+    ]
+
+    book = models.ForeignKey(
+        Book,
+        on_delete=models.CASCADE,
+        related_name='reservations'
+    )
+
+    member = models.ForeignKey(
+        Member,
+        on_delete=models.CASCADE,
+        related_name='reservations'
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='waiting'
+    )
+
+    queue_position = models.PositiveIntegerField(
+        default=0
+    )
+
+    reserved_at = models.DateTimeField(
+        auto_now_add=True
+    )
+
+    notified_at = models.DateTimeField(
+        null=True,
+        blank=True
+    )
+
+    expires_at = models.DateTimeField(
+        null=True,
+        blank=True
+    )
+
+    class Meta:
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=['member', 'book'],
+                condition=models.Q(status__in=['waiting', 'available']),
+                name='unique_active_reservation'
+            )
+        ]
+
+        ordering = ['book', 'reserved_at']
+
+    def __str__(self):
+        return (
+            f"{self.member.name} → "
+            f"{self.book.title} "
+            f"({self.status})"
+        )
+
+
+# =========================================================
+# NOTIFICATION
+# =========================================================
+
+class Notification(models.Model):
+
+    NOTIF_TYPE_CHOICES = [
+        ('book_request_approved',   'Book Request Approved'),
+        ('book_request_rejected',   'Book Request Rejected'),
+        ('borrow_approved',         'Borrow Approved'),
+        ('return_requested',        'Return Requested'),
+        ('return_approved',         'Return Approved'),
+        ('loan_due_soon',           'Loan Due Soon'),
+        ('loan_overdue',            'Loan Overdue'),
+        ('reservation_available',   'Reserved Book Available'),
+        ('reservation_expired',     'Reservation Expired'),
+        ('fee_generated',           'Fee Generated'),
+        ('payment_successful',      'Payment Successful'),
+        ('waitlist_updated',        'Waitlist Updated'),
+    ]
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='notifications'
+    )
+
+    notif_type = models.CharField(
+        max_length=40,
+        choices=NOTIF_TYPE_CHOICES
+    )
+
+    title = models.CharField(
+        max_length=255
+    )
+
+    message = models.TextField()
+
+    is_read = models.BooleanField(
+        default=False
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True
+    )
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"[{self.notif_type}] {self.user.username} — {self.title}"
+
+
+def create_notification(user, notif_type, title, message):
+    """Helper to create a notification for a user."""
+    Notification.objects.create(
+        user=user,
+        notif_type=notif_type,
+        title=title,
+        message=message,
+    )
 
 
 # =========================================================

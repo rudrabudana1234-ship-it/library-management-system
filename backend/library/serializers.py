@@ -13,6 +13,8 @@ from .models import (
     ReturnRequest,
     Fee,
     Payment,
+    Reservation,
+    Notification,
 )
 
 
@@ -558,7 +560,6 @@ class RecentSearchSerializer(
         ]
 
 class PaymentSerializer(serializers.ModelSerializer):
-
     fee_type = serializers.CharField(
         source="fee.fee_type",
         read_only=True,
@@ -595,4 +596,102 @@ class PaymentSerializer(serializers.ModelSerializer):
             "gateway_payment_id",
             "created_at",
             "paid_at",
+        ]
+
+
+# =========================================================
+# RESERVATION
+# =========================================================
+
+class ReservationSerializer(serializers.ModelSerializer):
+
+    book_title = serializers.CharField(
+        source='book.title',
+        read_only=True
+    )
+
+    book_author = serializers.CharField(
+        source='book.author.name',
+        read_only=True
+    )
+
+    book_available = serializers.IntegerField(
+        source='book.available',
+        read_only=True
+    )
+
+    member_name = serializers.CharField(
+        source='member.name',
+        read_only=True
+    )
+
+    status_display = serializers.CharField(
+        source='get_status_display',
+        read_only=True
+    )
+
+    class Meta:
+        model = Reservation
+
+        fields = [
+            'id',
+            'book',
+            'book_title',
+            'book_author',
+            'book_available',
+            'member',
+            'member_name',
+            'status',
+            'status_display',
+            'queue_position',
+            'reserved_at',
+            'notified_at',
+            'expires_at',
+        ]
+
+        read_only_fields = [
+            'id',
+            'member',
+            'member_name',
+            'book_title',
+            'book_author',
+            'book_available',
+            'status',
+            'status_display',
+            'queue_position',
+            'reserved_at',
+            'notified_at',
+            'expires_at',
+        ]
+
+
+# =========================================================
+# NOTIFICATION
+# =========================================================
+
+class NotificationSerializer(serializers.ModelSerializer):
+
+    notif_type_display = serializers.CharField(
+        source='get_notif_type_display',
+        read_only=True,
+    )
+
+    class Meta:
+        model = Notification
+        fields = [
+            'id',
+            'notif_type',
+            'notif_type_display',
+            'title',
+            'message',
+            'is_read',
+            'created_at',
+        ]
+        read_only_fields = [
+            'id',
+            'notif_type',
+            'notif_type_display',
+            'title',
+            'message',
+            'created_at',
         ]

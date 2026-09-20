@@ -9,6 +9,7 @@ from .views import (
     LoanViewSet,
     DashboardView,
     RecentBookSearchView,
+    AIBookSearchView,
     BookRequestView,
     LibrarianBookRequestActionView,
     LibrarianReturnRequestView,
@@ -17,7 +18,12 @@ from .views import (
     MemberPaymentView,
     PaymentVerificationView,
     MemberPaymentHistoryView,
-) 
+    MemberReservationView,
+    CancelReservationView,
+    BookReservationQueueView,
+    LibrarianAnalyticsView,
+    NotificationViewSet,
+)
 
 # =========================================================
 # ROUTER
@@ -54,6 +60,12 @@ router.register(
     basename='loan'
 )
 
+router.register(
+    r'notifications',
+    NotificationViewSet,
+    basename='notification'
+)
+
 # =========================================================
 # URL PATTERNS
 # =========================================================
@@ -87,6 +99,16 @@ urlpatterns = [
         'books/recent-searches/',
         RecentBookSearchView.as_view(),
         name='recent-book-searches',
+    ),
+
+    # =====================================================
+    # AI BOOK SEARCH
+    # =====================================================
+
+    path(
+        'books/ai-search/',
+        AIBookSearchView.as_view(),
+        name='ai-book-search',
     ),
 
     # =====================================================
@@ -158,4 +180,36 @@ urlpatterns = [
     path('payments/create/<int:fee_id>/', MemberPaymentView.as_view(), name='member-payment-create'),
 
     path('payments/verify/', PaymentVerificationView.as_view(), name='payment-verify'),
+
+    # =====================================================
+    # RESERVATIONS
+    # =====================================================
+
+    path(
+        'reservations/',
+        MemberReservationView.as_view(),
+        name='member-reservations',
+    ),
+
+    path(
+        'reservations/<int:reservation_id>/cancel/',
+        CancelReservationView.as_view(),
+        name='cancel-reservation',
+    ),
+
+    path(
+        'books/<int:book_id>/reservation-queue/',
+        BookReservationQueueView.as_view(),
+        name='book-reservation-queue',
+    ),
+
+    # =====================================================
+    # LIBRARIAN ANALYTICS
+    # =====================================================
+
+    path(
+        'analytics/',
+        LibrarianAnalyticsView.as_view(),
+        name='librarian-analytics',
+    ),
 ]
