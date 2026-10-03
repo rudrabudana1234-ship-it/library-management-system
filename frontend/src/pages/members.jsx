@@ -1,3 +1,7 @@
+import LoadingStages from "../components/loadingstage";
+import ButtonLoading from "../components/buttonloading";
+import EmptyState from "../components/emptystate";
+import ErrorState from "../components/errorstate";
 import {
     useEffect,
     useRef,
@@ -1766,49 +1770,22 @@ function Members() {
             ================================================= */}
 
             {error && (
-
-                <div
-                    className="alert alert-danger border-0 shadow-sm"
-                    role="alert"
-                >
-
-                    <div className="d-flex justify-content-between align-items-start gap-3">
-
-                        <div>
-
-                            <h6 className="fw-bold mb-2">
-                                ⚠️ Unable to complete request
-                            </h6>
-
-                            <pre
-                                className="mb-0 text-danger"
-                                style={{
-                                    whiteSpace:
-                                        "pre-wrap",
-                                    wordBreak:
-                                        "break-word",
-                                }}
-                            >
-                                {error}
-                            </pre>
-
-                        </div>
-
+                <ErrorState
+                    title="Unable to load members"
+                    message={error}
+                    action={
                         <button
-                            className="btn btn-outline-danger btn-sm"
+                            className="btn btn-outline-danger"
                             onClick={() =>
                                 fetchMembers(
                                     buildQuery()
                                 )
                             }
                         >
-                            🔄 Retry
+                            🔄 Try Again
                         </button>
-
-                    </div>
-
-                </div>
-
+                    }
+                />
             )}
 
             {/* =================================================
@@ -1816,56 +1793,22 @@ function Members() {
             ================================================= */}
 
             {loading && (
-
-                <div className="card border-0 shadow-sm">
-
-                    <div className="card-body text-center py-5">
-
-                        <div
-                            className="spinner-border text-primary"
-                            role="status"
-                        >
-
-                            <span className="visually-hidden">
-                                Loading...
-                            </span>
-
-                        </div>
-
-                        <p className="text-muted mt-3 mb-0">
-                            Loading members...
-                        </p>
-
-                    </div>
-
-                </div>
-
-            )}
-
-            {/* =================================================
-                EMPTY
-            ================================================= */}
-
-            {!loading &&
+                <LoadingStages
+                    title="Loading members"
+                    stages={[
+                        "Connecting to member records",
+                        "Fetching members",
+                        "Preparing member list",
+                    ]}
+                />
+            )}    {!loading &&
                 !error &&
                 members.length === 0 && (
-
-                    <div className="card border-0 shadow-sm">
-
-                        <div className="card-body text-center py-5">
-
-                            <div className="display-4 mb-3">
-                                👥
-                            </div>
-
-                            <h4 className="fw-bold">
-                                No members found
-                            </h4>
-
-                            <p className="text-muted mb-4">
-                                No members match your current search or filters.
-                            </p>
-
+                    <EmptyState
+                        icon="👥"
+                        title="No members found"
+                        message="No members match your current search or filters."
+                        action={
                             <button
                                 className="btn btn-outline-primary"
                                 onClick={
@@ -1874,11 +1817,8 @@ function Members() {
                             >
                                 Clear Filters
                             </button>
-
-                        </div>
-
-                    </div>
-
+                        }
+                    />
                 )}
 
             {/* =================================================
@@ -2599,38 +2539,16 @@ function Members() {
                                             Cancel
                                         </button>
 
-                                        <button
+                                        <ButtonLoading
                                             type="submit"
                                             className="btn btn-primary"
-                                            disabled={
-                                                saving
-                                            }
+                                            loading={saving}
+                                            loadingText="Saving..."
                                         >
-
-                                            {saving ? (
-
-                                                <>
-
-                                                    <span
-                                                        className="spinner-border spinner-border-sm me-2"
-                                                        role="status"
-                                                    />
-
-                                                    Saving...
-
-                                                </>
-
-                                            ) : editingMember ? (
-
-                                                "Update Member"
-
-                                            ) : (
-
-                                                "Add Member"
-
-                                            )}
-
-                                        </button>
+                                            {editingMember
+                                                ? "Update Member"
+                                                : "Add Member"}
+                                        </ButtonLoading>
 
                                     </div>
 

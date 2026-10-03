@@ -1,12 +1,22 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { useTheme } from "../context/themecontext";
 import { useAuth } from "../context/authcontext";
+import NotificationBell from "./NotificationBell";
 
 function Navbar() {
+    const navigate = useNavigate();
+    const { isDarkMode, toggleTheme } = useTheme();
+
     const {
         user,
         isAuthenticated,
         logout,
     } = useAuth();
+
+    const handleLogout = () => {
+        logout();
+        navigate("/");
+    };
 
     return (
         <nav className="navbar navbar-expand-lg navbar-dark bg-dark shadow-sm">
@@ -129,7 +139,33 @@ function Navbar() {
                             {/* User Profile Dropdown */}
                             {/* ========================= */}
 
-                            <div className="dropdown">
+                            <div className="d-flex align-items-center gap-2">
+
+                                {/* Theme Toggle */}
+                                <button
+                                    type="button"
+                                    className="btn lms-theme-toggle border-0"
+                                    onClick={toggleTheme}
+                                    aria-label={
+                                        isDarkMode
+                                            ? "Switch to light mode"
+                                            : "Switch to dark mode"
+                                    }
+                                    title={
+                                        isDarkMode
+                                            ? "Light mode"
+                                            : "Dark mode"
+                                    }
+                                >
+                                    <span className="theme-toggle-label">
+                                        {isDarkMode ? "☀️" : "🌙"}
+                                    </span>
+                                </button>
+
+                                {/* Notification Bell */}
+                                <NotificationBell />
+
+                                <div className="dropdown">
 
                                 <button
                                     className="btn btn-dark dropdown-toggle d-flex align-items-center gap-2"
@@ -175,7 +211,7 @@ function Navbar() {
                                     {/* Logout */}
                                     <li>
                                         <button
-                                            onClick={logout}
+                                            onClick={handleLogout}
                                             className="dropdown-item text-danger"
                                         >
                                             🚪 Logout
@@ -186,6 +222,8 @@ function Navbar() {
 
                             </div>
 
+                            </div>{/* end d-flex wrapper */}
+
                         </>
                     ) : (
 
@@ -193,7 +231,28 @@ function Navbar() {
                         /* Logged Out Buttons */
                         /* ========================= */
 
-                        <div className="ms-auto d-flex gap-2">
+                        <div className="ms-auto d-flex gap-2 align-items-center">
+
+                            {/* Theme Toggle */}
+                            <button
+                                type="button"
+                                className="btn lms-theme-toggle border-0"
+                                onClick={toggleTheme}
+                                aria-label={
+                                    isDarkMode
+                                        ? "Switch to light mode"
+                                        : "Switch to dark mode"
+                                }
+                                title={
+                                    isDarkMode
+                                        ? "Light mode"
+                                        : "Dark mode"
+                                }
+                            >
+                                <span className="theme-toggle-label">
+                                    {isDarkMode ? "☀️" : "🌙"}
+                                </span>
+                            </button>
 
                             {/* Login */}
                             <Link

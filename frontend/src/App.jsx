@@ -24,6 +24,7 @@ import ResetPassword from "./pages/resetpassword";
 import ChangePassword from "./pages/changepassword";
 
 import Admin from "./pages/admin";
+import Notifications from "./pages/notifications";
 
 function App() {
     return (
@@ -96,6 +97,11 @@ function App() {
                 <Route
                     path="/admin"
                     element={<Admin />}
+                />
+
+                <Route
+                    path="/notifications"
+                    element={<Notifications />}
                 />
 
             </Routes>

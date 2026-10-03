@@ -1,3 +1,7 @@
+import LoadingStages from "../components/loadingstage";
+import ButtonLoading from "../components/buttonloading";
+import EmptyState from "../components/emptystate";
+import ErrorState from "../components/errorstate";
 import {
     useEffect,
     useMemo,
@@ -17,6 +21,9 @@ function MyLoans() {
 
     const [error, setError] =
         useState("");
+
+    const [returnLoadingId, setReturnLoadingId] =
+        useState(null);
 
     // =====================================================
     // FEES
@@ -49,6 +56,15 @@ function MyLoans() {
 
     const [paymentSuccess, setPaymentSuccess] =
         useState("");
+
+    const [paymentMethod, setPaymentMethod] =
+        useState("upi");
+
+    const [selectedFee, setSelectedFee] =
+        useState(null);
+
+    const [showPaymentModal, setShowPaymentModal] =
+        useState(false);
 
     // =====================================================
     // EXTRACT API RESULTS
@@ -163,10 +179,10 @@ function MyLoans() {
         }
 
         if (cover.startsWith("/")) {
-            return `http://127.0.0.1:8001${cover}`;
+            return `http://127.0.0.1:8002${cover}`;
         }
 
-        return `http://127.0.0.1:8001/media/${cover}`;
+        return `http://127.0.0.1:8002/media/${cover}`;
     };
 
     // =====================================================
@@ -586,6 +602,7 @@ function MyLoans() {
 
             try {
                 setError("");
+                setReturnLoadingId(loan.id);
 
                 await api.post(
                     `loans/${loan.id}/request-return/`
@@ -608,244 +625,73 @@ function MyLoans() {
                             ?.error ||
                         "Unable to request book return."
                 );
+            } finally {
+                setReturnLoadingId(null);
             }
         };
 
     // =====================================================
-    // LOAD RAZORPAY SCRIPT
+    // OPEN SIMPLE PAYMENT MODAL
     // =====================================================
 
-    const loadRazorpayScript =
-        () => {
-            return new Promise(
-                (resolve) => {
-                    if (
-                        window.Razorpay
-                    ) {
-                        resolve(true);
-                        return;
-                    }
+    const handlePayFee = (fee) => {
+        setPaymentError("");
+        setPaymentSuccess("");
+        setSelectedFee(fee);
+        setPaymentMethod("upi");
+        setShowPaymentModal(true);
+    };
 
-                    const script =
-                        document.createElement(
-                            "script"
-                        );
+    // =====================================================
+    // CONFIRM SIMPLE PROJECT PAYMENT
+    // =====================================================
 
-                    script.src =
-                        "https://checkout.razorpay.com/v1/checkout.js";
+    const handleConfirmPayment = async () => {
+        if (!selectedFee) {
+            return;
+        }
 
-                    script.onload =
-                        () =>
-                            resolve(
-                                true
-                            );
+        try {
+            setPaymentError("");
+            setPaymentSuccess("");
+            setPaymentLoadingId(selectedFee.id);
 
-                    script.onerror =
-                        () =>
-                            resolve(
-                                false
-                            );
-
-                    document.body.appendChild(
-                        script
-                    );
+            const response = await api.post(
+                `payments/create/${selectedFee.id}/`,
+                {
+                    payment_method: paymentMethod,
                 }
             );
-        };
 
-    // =====================================================
-    // PAY FEE
-    // =====================================================
+            setPaymentSuccess(
+                response.data?.detail ||
+                    "Payment completed successfully! 🎉"
+            );
 
-    const handlePayFee =
-        async (fee) => {
-            try {
-                setPaymentError("");
-                setPaymentSuccess("");
+            setShowPaymentModal(false);
+            setSelectedFee(null);
 
-                setPaymentLoadingId(
-                    fee.id
-                );
+            await Promise.all([
+                fetchFees(),
+                fetchPayments(),
+            ]);
+        } catch (err) {
+            console.error(
+                "SIMPLE PAYMENT ERROR:",
+                err.response?.data || err.message
+            );
 
-                const loaded =
-                    await loadRazorpayScript();
+            setPaymentError(
+                err.response?.data?.detail ||
+                    err.response?.data?.error ||
+                    "Unable to complete payment."
+            );
 
-                if (!loaded) {
-                    setPaymentError(
-                        "Unable to load the payment gateway."
-                    );
-
-                    return;
-                }
-
-                // IMPORTANT:
-                // Backend route is:
-                // payments/create/<fee_id>/
-                //
-                // Therefore fee.id is passed
-                // in the URL, not request body.
-
-                const response =
-                    await api.post(
-                        `payments/create/${fee.id}/`
-                    );
-
-                const order =
-                    response.data;
-
-                const options = {
-                    key:
-                        order.razorpay_key_id,
-
-                    amount:
-                        order.amount_in_paise,
-
-                    currency:
-                        order.currency,
-
-                    name:
-                        "Library Management System",
-
-                    description:
-                        `Library fee payment - ${
-                            fee.fee_type ||
-                            "Fee"
-                        }`,
-
-                    order_id:
-                        order.razorpay_order_id,
-
-                    handler:
-                        async (
-                            paymentResponse
-                        ) => {
-                            try {
-                                setPaymentError(
-                                    ""
-                                );
-
-                                setPaymentSuccess(
-                                    "Verifying payment..."
-                                );
-
-                                await api.post(
-                                    "payments/verify/",
-                                    {
-                                        razorpay_order_id:
-                                            paymentResponse.razorpay_order_id,
-
-                                        razorpay_payment_id:
-                                            paymentResponse.razorpay_payment_id,
-
-                                        razorpay_signature:
-                                            paymentResponse.razorpay_signature,
-                                    }
-                                );
-
-                                setPaymentSuccess(
-                                    "Payment successful! 🎉"
-                                );
-
-                                await Promise.all(
-                                    [
-                                        fetchFees(),
-                                        fetchPayments(),
-                                    ]
-                                );
-                            } catch (
-                                verificationError
-                            ) {
-                                console.error(
-                                    "PAYMENT VERIFICATION ERROR:",
-                                    verificationError
-                                        .response
-                                        ?.data ||
-                                        verificationError.message
-                                );
-
-                                setPaymentError(
-                                    verificationError
-                                        .response
-                                        ?.data
-                                        ?.detail ||
-                                        verificationError
-                                            .response
-                                            ?.data
-                                            ?.error ||
-                                        "Payment verification failed."
-                                );
-
-                                setPaymentSuccess(
-                                    ""
-                                );
-                            }
-                        },
-
-                    modal: {
-                        ondismiss:
-                            () => {
-                                setPaymentSuccess(
-                                    ""
-                                );
-                            },
-                    },
-
-                    theme: {
-                        color:
-                            "#0d6efd",
-                    },
-                };
-
-                const razorpay =
-                    new window.Razorpay(
-                        options
-                    );
-
-                razorpay.on(
-                    "payment.failed",
-                    (response) => {
-                        console.error(
-                            "RAZORPAY PAYMENT FAILED:",
-                            response
-                                .error
-                        );
-
-                        setPaymentError(
-                            response
-                                .error
-                                ?.description ||
-                                "Payment failed."
-                        );
-
-                        setPaymentSuccess(
-                            ""
-                        );
-                    }
-                );
-
-                razorpay.open();
-            } catch (err) {
-                console.error(
-                    "CREATE PAYMENT ERROR:",
-                    err.response?.data ||
-                        err.message
-                );
-
-                setPaymentError(
-                    err.response?.data
-                        ?.detail ||
-                        err.response?.data
-                            ?.error ||
-                        "Unable to start payment."
-                );
-
-                setPaymentSuccess("");
-            } finally {
-                setPaymentLoadingId(
-                    null
-                );
-            }
-        };
+            setPaymentSuccess("");
+        } finally {
+            setPaymentLoadingId(null);
+        }
+    };
 
     // =====================================================
     // LOADING
@@ -854,25 +700,14 @@ function MyLoans() {
     if (loading) {
         return (
             <div className="container py-5">
-                <div className="text-center">
-                    <div
-                        className="spinner-border text-primary mb-3"
-                        role="status"
-                    >
-                        <span className="visually-hidden">
-                            Loading...
-                        </span>
-                    </div>
-
-                    <h5 className="text-muted mb-1">
-                        Loading your loans...
-                    </h5>
-
-                    <small className="text-muted">
-                        Please wait while we fetch
-                        your borrowing history.
-                    </small>
-                </div>
+                <LoadingStages
+                    title="Loading your loans"
+                    stages={[
+                        "Connecting to your account",
+                        "Fetching loans and fees",
+                        "Preparing your borrowing history",
+                    ]}
+                />
             </div>
         );
     }
@@ -901,7 +736,7 @@ function MyLoans() {
                     </p>
                 </div>
 
-                <button
+                <ButtonLoading
                     type="button"
                     className="btn btn-outline-primary"
                     onClick={() =>
@@ -911,23 +746,15 @@ function MyLoans() {
                             fetchPayments(),
                         ])
                     }
-                    disabled={
+                    loading={
                         refreshing ||
                         feesLoading ||
                         paymentsLoading
                     }
+                    loadingText="Refreshing..."
                 >
-                    {refreshing ? (
-                        <>
-                            <span className="spinner-border spinner-border-sm me-2" />
-                            Refreshing...
-                        </>
-                    ) : (
-                        <>
-                            🔄 Refresh
-                        </>
-                    )}
-                </button>
+                    🔄 Refresh
+                </ButtonLoading>
 
             </div>
 
@@ -936,29 +763,21 @@ function MyLoans() {
             ================================================= */}
 
             {error && (
-                <div className="alert alert-danger">
-
-                    <div className="d-flex gap-3">
-
-                        <div className="fs-4">
-                            ⚠️
-                        </div>
-
-                        <div className="flex-grow-1">
-
-                            <strong>
-                                Unable to complete request
-                            </strong>
-
-                            <div className="mt-1">
-                                {error}
-                            </div>
-
-                        </div>
-
-                    </div>
-
-                </div>
+                <ErrorState
+                    className="mb-4"
+                    title="Unable to load your loans"
+                    message={error}
+                    action={
+                        <button
+                            type="button"
+                            className="btn btn-primary"
+                            onClick={() => fetchMyLoans(false)}
+                            disabled={refreshing}
+                        >
+                            Try Again
+                        </button>
+                    }
+                />
             )}
 
             {/* =================================================
@@ -1096,22 +915,12 @@ function MyLoans() {
 
                     {loans.length === 0 ? (
 
-                        <div className="text-center py-5">
-
-                            <div className="display-5 mb-3">
-                                📚
-                            </div>
-
-                            <h6 className="fw-bold">
-                                No loans yet
-                            </h6>
-
-                            <p className="text-muted mb-0">
-                                Your borrowing history
-                                will appear here.
-                            </p>
-
-                        </div>
+                        <EmptyState
+                            icon="📚"
+                            title="No loans yet"
+                            message="Your borrowing history will appear here when you borrow a book."
+                            className="shadow-none rounded-0"
+                        />
 
                     ) : (
 
@@ -1469,43 +1278,43 @@ function MyLoans() {
                     )}
 
                     {feesError && (
-                        <div className="alert alert-danger">
-                            ⚠️{" "}
-                            {feesError}
-                        </div>
+                        <ErrorState
+                            className="mb-3"
+                            title="Unable to load fees"
+                            message={feesError}
+                            action={
+                                <button
+                                    type="button"
+                                    className="btn btn-sm btn-primary"
+                                    onClick={fetchFees}
+                                    disabled={feesLoading}
+                                >
+                                    Try Again
+                                </button>
+                            }
+                        />
                     )}
 
                     {feesLoading ? (
 
-                        <div className="text-center py-4">
-
-                            <div
-                                className="spinner-border spinner-border-sm text-primary me-2"
-                                role="status"
-                            />
-
-                            Loading fees...
-
-                        </div>
+                        <LoadingStages
+                            compact
+                            title="Loading fees"
+                            stages={[
+                                "Fetching your fees",
+                                "Checking pending balances",
+                                "Preparing payment options",
+                            ]}
+                        />
 
                     ) : pendingFees.length === 0 ? (
 
-                        <div className="text-center py-4">
-
-                            <div className="display-6 mb-2">
-                                🎉
-                            </div>
-
-                            <h6 className="fw-bold">
-                                No outstanding fees
-                            </h6>
-
-                            <p className="text-muted mb-0">
-                                You don't have any
-                                pending library fees.
-                            </p>
-
-                        </div>
+                        <EmptyState
+                            icon="🎉"
+                            title="No outstanding fees"
+                            message="You don't have any pending library fees."
+                            className="shadow-none"
+                        />
 
                     ) : (
 
@@ -1608,7 +1417,7 @@ function MyLoans() {
 
                                                 <td>
 
-                                                    <button
+                                                    <ButtonLoading
                                                         type="button"
                                                         className="btn btn-sm btn-primary"
                                                         onClick={() =>
@@ -1616,25 +1425,14 @@ function MyLoans() {
                                                                 fee
                                                             )
                                                         }
-                                                        disabled={
+                                                        loading={
                                                             paymentLoadingId ===
                                                             fee.id
                                                         }
+                                                        loadingText="Processing..."
                                                     >
-
-                                                        {paymentLoadingId ===
-                                                        fee.id ? (
-                                                            <>
-                                                                <span className="spinner-border spinner-border-sm me-2" />
-                                                                Opening...
-                                                            </>
-                                                        ) : (
-                                                            <>
-                                                                💳 Pay Now
-                                                            </>
-                                                        )}
-
-                                                    </button>
+                                                        💳 Pay Now
+                                                    </ButtonLoading>
 
                                                 </td>
 
@@ -1695,37 +1493,44 @@ function MyLoans() {
 
                 <div className="card-body p-0">
 
+                    {paymentError && !showPaymentModal && (
+                        <ErrorState
+                            className="mb-3"
+                            title="Unable to load payment history"
+                            message={paymentError}
+                            action={
+                                <button
+                                    type="button"
+                                    className="btn btn-sm btn-primary"
+                                    onClick={fetchPayments}
+                                    disabled={paymentsLoading}
+                                >
+                                    Try Again
+                                </button>
+                            }
+                        />
+                    )}
+
                     {paymentsLoading ? (
 
-                        <div className="text-center py-4">
-
-                            <div
-                                className="spinner-border spinner-border-sm text-primary me-2"
-                                role="status"
-                            />
-
-                            Loading payment history...
-
-                        </div>
+                        <LoadingStages
+                            compact
+                            title="Loading payment history"
+                            stages={[
+                                "Fetching transactions",
+                                "Checking payment status",
+                                "Preparing payment history",
+                            ]}
+                        />
 
                     ) : payments.length === 0 ? (
 
-                        <div className="text-center py-5">
-
-                            <div className="display-6 mb-2">
-                                🧾
-                            </div>
-
-                            <h6 className="fw-bold">
-                                No payment history
-                            </h6>
-
-                            <p className="text-muted mb-0">
-                                Your payments will appear
-                                here after successful payment.
-                            </p>
-
-                        </div>
+                        <EmptyState
+                            icon="🧾"
+                            title="No payment history"
+                            message="Your payments will appear here after a successful payment."
+                            className="shadow-none"
+                        />
 
                     ) : (
 
@@ -1888,6 +1693,172 @@ function MyLoans() {
                 </div>
 
             </div>
+
+            {/* =================================================
+                SIMPLE PAYMENT MODAL
+            ================================================= */}
+
+            {showPaymentModal && selectedFee && (
+
+                <div
+                    className="modal fade show d-block"
+                    tabIndex="-1"
+                    role="dialog"
+                    aria-modal="true"
+                    style={{
+                        backgroundColor: "rgba(0, 0, 0, 0.5)",
+                    }}
+                >
+
+                    <div
+                        className="modal-dialog modal-dialog-centered"
+                        role="document"
+                    >
+
+                        <div className="modal-content border-0 shadow">
+
+                            <div className="modal-header">
+
+                                <div>
+                                    <h5 className="modal-title fw-bold mb-1">
+                                        💳 Pay Library Fee
+                                    </h5>
+
+                                    <small className="text-muted">
+                                        Simple project payment
+                                    </small>
+                                </div>
+
+                                <button
+                                    type="button"
+                                    className="btn-close"
+                                    aria-label="Close"
+                                    onClick={() => {
+                                        setShowPaymentModal(false);
+                                        setSelectedFee(null);
+                                        setPaymentError("");
+                                    }}
+                                    disabled={
+                                        paymentLoadingId === selectedFee.id
+                                    }
+                                />
+
+                            </div>
+
+                            <div className="modal-body">
+
+                                <div className="bg-light rounded-3 p-3 mb-4">
+
+                                    <div className="d-flex justify-content-between gap-3 mb-2">
+                                        <span className="text-muted">
+                                            Book
+                                        </span>
+                                        <strong className="text-end">
+                                            {selectedFee.book_title || "Book"}
+                                        </strong>
+                                    </div>
+
+                                    <div className="d-flex justify-content-between gap-3 mb-2">
+                                        <span className="text-muted">
+                                            Fee Type
+                                        </span>
+                                        <span className="text-capitalize">
+                                            {selectedFee.fee_type || "Fee"}
+                                        </span>
+                                    </div>
+
+                                    <div className="d-flex justify-content-between gap-3">
+                                        <span className="text-muted">
+                                            Amount
+                                        </span>
+                                        <strong className="text-primary fs-5">
+                                            ₹{Number(selectedFee.amount || 0).toFixed(2)}
+                                        </strong>
+                                    </div>
+
+                                </div>
+
+                                <label
+                                    className="form-label fw-semibold"
+                                    htmlFor="payment-method"
+                                >
+                                    Select Payment Method
+                                </label>
+
+                                <select
+                                    id="payment-method"
+                                    className="form-select"
+                                    value={paymentMethod}
+                                    onChange={(event) =>
+                                        setPaymentMethod(event.target.value)
+                                    }
+                                    disabled={
+                                        paymentLoadingId === selectedFee.id
+                                    }
+                                >
+                                    <option value="upi">
+                                        📱 UPI
+                                    </option>
+                                    <option value="card">
+                                        💳 Card
+                                    </option>
+                                    <option value="netbanking">
+                                        🏦 Net Banking
+                                    </option>
+                                </select>
+
+                                <div className="alert alert-info mt-3 mb-0">
+                                    <small>
+                                        This is a simulated payment system for the
+                                        LMS project. No real money will be charged.
+                                    </small>
+                                </div>
+
+                                {paymentError && (
+                                    <div className="alert alert-danger mt-3 mb-0">
+                                        ⚠️ {paymentError}
+                                    </div>
+                                )}
+
+                            </div>
+
+                            <div className="modal-footer">
+
+                                <button
+                                    type="button"
+                                    className="btn btn-outline-secondary"
+                                    onClick={() => {
+                                        setShowPaymentModal(false);
+                                        setSelectedFee(null);
+                                        setPaymentError("");
+                                    }}
+                                    disabled={
+                                        paymentLoadingId === selectedFee.id
+                                    }
+                                >
+                                    Cancel
+                                </button>
+
+                                <ButtonLoading
+                                    type="button"
+                                    className="btn btn-primary"
+                                    onClick={handleConfirmPayment}
+                                    loading={
+                                        paymentLoadingId === selectedFee.id
+                                    }
+                                    loadingText="Processing..."
+                                >
+                                    💳 Confirm Payment
+                                </ButtonLoading>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </div>
+            )}
 
         </div>
     );

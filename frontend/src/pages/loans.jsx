@@ -1,3 +1,7 @@
+import LoadingStages from "../components/loadingstage";
+import ButtonLoading from "../components/buttonloading";
+import EmptyState from "../components/emptystate";
+import ErrorState from "../components/errorstate";
 import { useEffect, useState } from "react";
 import api from "../services/api";
 import { useAuth } from "../context/authcontext";
@@ -1041,30 +1045,25 @@ function Loans() {
                     <div className="card-body p-0">
 
                         {requestLoading ? (
-                            <div className="text-center py-4">
-
-                                <div
-                                    className="spinner-border spinner-border-sm text-primary me-2"
-                                    role="status"
+                            <div className="p-4">
+                                <LoadingStages
+                                    compact
+                                    title="Loading borrowing requests"
+                                    stages={[
+                                        "Connecting to requests",
+                                        "Fetching pending requests",
+                                        "Preparing request actions",
+                                    ]}
                                 />
-
-                                Loading borrowing
-                                requests...
-
                             </div>
                         ) : pendingRequests.length === 0 ? (
 
-                            <div className="text-center py-4">
-
-                                <div className="fs-2 mb-2">
-                                    ✓
-                                </div>
-
-                                <p className="text-muted mb-0">
-                                    No pending borrowing
-                                    requests.
-                                </p>
-
+                            <div className="p-3">
+                                <EmptyState
+                                    icon="✓"
+                                    title="No pending requests"
+                                    message="There are no borrowing requests waiting for librarian action."
+                                />
                             </div>
 
                         ) : (
@@ -1210,10 +1209,11 @@ function Loans() {
 
                                                             <div className="d-flex flex-wrap gap-2">
 
-                                                                <button
+                                                                <ButtonLoading
                                                                     className="btn btn-sm btn-success"
+                                                                    loading={approving}
+                                                                    loadingText="Approving..."
                                                                     disabled={
-                                                                        approving ||
                                                                         rejecting ||
                                                                         Number(
                                                                             available
@@ -1227,16 +1227,15 @@ function Loans() {
                                                                         )
                                                                     }
                                                                 >
-                                                                    {approving
-                                                                        ? "Approving..."
-                                                                        : "✓ Approve"}
-                                                                </button>
+                                                                    ✓ Approve
+                                                                </ButtonLoading>
 
-                                                                <button
+                                                                <ButtonLoading
                                                                     className="btn btn-sm btn-outline-danger"
+                                                                    loading={rejecting}
+                                                                    loadingText="Rejecting..."
                                                                     disabled={
-                                                                        approving ||
-                                                                        rejecting
+                                                                        approving
                                                                     }
                                                                     onClick={() =>
                                                                         handleRequestAction(
@@ -1245,10 +1244,8 @@ function Loans() {
                                                                         )
                                                                     }
                                                                 >
-                                                                    {rejecting
-                                                                        ? "Rejecting..."
-                                                                        : "✕ Reject"}
-                                                                </button>
+                                                                    ✕ Reject
+                                                                </ButtonLoading>
 
                                                             </div>
 
@@ -1570,49 +1567,24 @@ function Loans() {
             ================================================= */}
 
             {error && (
-
-                <div className="alert alert-danger">
-
-                    <div className="d-flex gap-3">
-
-                        <div className="fs-4">
-                            ⚠️
-                        </div>
-
-                        <div className="flex-grow-1">
-
-                            <h6 className="fw-bold">
-                                Unable to load loans
-                            </h6>
-
-                            <pre
-                                className="mb-0"
-                                style={{
-                                    whiteSpace:
-                                        "pre-wrap",
-                                    wordBreak:
-                                        "break-word",
-                                }}
-                            >
-                                {error}
-                            </pre>
-
-                            <button
-                                className="btn btn-outline-danger btn-sm mt-3"
-                                onClick={() =>
-                                    fetchLoans(
-                                        buildFilterUrl()
-                                    )
-                                }
-                            >
-                                🔄 Try Again
-                            </button>
-
-                        </div>
-
-                    </div>
-
-                </div>
+                <ErrorState
+                    title="Unable to load loans"
+                    message={error}
+                    action={
+                        <ButtonLoading
+                            className="btn btn-outline-danger btn-sm"
+                            loading={loading}
+                            loadingText="Retrying..."
+                            onClick={() =>
+                                fetchLoans(
+                                    buildFilterUrl()
+                                )
+                            }
+                        >
+                            🔄 Try Again
+                        </ButtonLoading>
+                    }
+                />
             )}
 
             {/* =================================================
@@ -1620,28 +1592,14 @@ function Loans() {
             ================================================= */}
 
             {loading && (
-
-                <div className="card border-0 shadow-sm">
-
-                    <div className="card-body text-center py-5">
-
-                        <div
-                            className="spinner-border text-primary mb-3"
-                            role="status"
-                        />
-
-                        <h6 className="fw-semibold">
-                            Loading loans...
-                        </h6>
-
-                        <p className="text-muted mb-0">
-                            Please wait while we fetch
-                            the latest loan information.
-                        </p>
-
-                    </div>
-
-                </div>
+                <LoadingStages
+                    title="Loading loans"
+                    stages={[
+                        "Connecting to loan records",
+                        "Fetching current loans",
+                        "Preparing loan details",
+                    ]}
+                />
             )}
 
             {/* =================================================
@@ -1652,29 +1610,17 @@ function Loans() {
                 !error &&
                 loans.length === 0 && (
 
-                    <div className="card border-0 shadow-sm">
-
-                        <div className="card-body text-center py-5">
-
-                            <div className="display-4 mb-3">
-                                📚
-                            </div>
-
-                            <h5 className="fw-bold">
-                                No loans found
-                            </h5>
-
-                            <p className="text-muted mb-3">
-                                No loans match your current
-                                search or filters.
-                            </p>
-
-                            {(search.trim() ||
+                    <EmptyState
+                        icon="📚"
+                        title="No loans found"
+                        message="No loans match your current search or filters."
+                        action={
+                            (search.trim() ||
                                 statusFilter ||
                                 bookFilter ||
-                                memberFilter) && (
-
+                                memberFilter) ? (
                                 <button
+                                    type="button"
                                     className="btn btn-outline-primary"
                                     onClick={
                                         handleClearFilters
@@ -1682,11 +1628,9 @@ function Loans() {
                                 >
                                     Clear Filters
                                 </button>
-                            )}
-
-                        </div>
-
-                    </div>
+                            ) : null
+                        }
+                    />
                 )}
 
             {/* =================================================
@@ -2190,22 +2134,14 @@ function Loans() {
                                             Cancel
                                         </button>
 
-                                        <button
+                                        <ButtonLoading
                                             type="submit"
                                             className="btn btn-primary"
-                                            disabled={
-                                                saving
-                                            }
+                                            loading={saving}
+                                            loadingText="Issuing..."
                                         >
-                                            {saving ? (
-                                                <>
-                                                    <span className="spinner-border spinner-border-sm me-2" />
-                                                    Issuing...
-                                                </>
-                                            ) : (
-                                                "Issue Book"
-                                            )}
-                                        </button>
+                                            Issue Book
+                                        </ButtonLoading>
 
                                     </div>
 
@@ -2468,22 +2404,14 @@ function Loans() {
                                                 Cancel
                                             </button>
 
-                                            <button
+                                            <ButtonLoading
                                                 type="submit"
                                                 className="btn btn-success"
-                                                disabled={
-                                                    returnSaving
-                                                }
+                                                loading={returnSaving}
+                                                loadingText="Processing..."
                                             >
-                                                {returnSaving ? (
-                                                    <>
-                                                        <span className="spinner-border spinner-border-sm me-2" />
-                                                        Processing...
-                                                    </>
-                                                ) : (
-                                                    "✓ Process Return"
-                                                )}
-                                            </button>
+                                                ✓ Process Return
+                                            </ButtonLoading>
 
                                         </div>
 

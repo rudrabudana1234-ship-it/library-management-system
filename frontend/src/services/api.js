@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const api = axios.create({
-    baseURL: "http://127.0.0.1:8001/api/",
+    baseURL: "http://127.0.0.1:8002/api/",
     headers: {
         "Content-Type": "application/json",
     },
@@ -64,7 +64,7 @@ api.interceptors.response.use(
                     localStorage.getItem("refresh_token");
 
                 const response = await axios.post(
-                    "http://127.0.0.1:8001/api/auth/token/refresh/",
+                    "http://127.0.0.1:8002/api/auth/token/refresh/",
                     {
                         refresh: refreshToken,
                     }
@@ -115,3 +115,21 @@ api.interceptors.response.use(
 
 
 export default api;
+
+// =========================================
+// NOTIFICATION API HELPERS
+// =========================================
+
+export const notificationsApi = {
+    list: (params = {}) =>
+        api.get("notifications/", { params }),
+
+    unreadCount: () =>
+        api.get("notifications/unread-count/"),
+
+    markRead: (id) =>
+        api.post(`notifications/${id}/mark-read/`),
+
+    markAllRead: () =>
+        api.post("notifications/mark-all-read/"),
+};

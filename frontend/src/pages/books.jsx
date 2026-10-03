@@ -1,3 +1,7 @@
+import LoadingStages from "../components/loadingstage";
+import ButtonLoading from "../components/buttonloading";
+import EmptyState from "../components/emptystate";
+import ErrorState from "../components/errorstate";
 import { useEffect, useMemo, useRef, useState } from "react";
 import api from "../services/api";
 import { useAuth } from "../context/authcontext";
@@ -51,6 +55,19 @@ function Books() {
     const searchTimerRef = useRef(null);
 
     // =========================
+    // AI / SEMANTIC SEARCH
+    // =========================
+
+    // The normal search box now uses a local TF-IDF + cosine-similarity
+    // ranking over the complete book catalogue. No separate AI button is
+    // needed, and the existing search suggestions continue to work.
+    const [aiMode, setAiMode] = useState(false);
+    const [aiResults, setAiResults] = useState([]);
+    const [aiLoading, setAiLoading] = useState(false);
+    const [aiError, setAiError] = useState("");
+    const [aiResultPage, setAiResultPage] = useState(1);
+
+    // =========================
     // USER RECENT SEARCH KEY
     // =========================
 
@@ -80,6 +97,9 @@ function Books() {
 
     const [showModal, setShowModal] = useState(false);
     const [editingBook, setEditingBook] = useState(null);
+
+    // Full book description modal
+    const [descriptionBook, setDescriptionBook] = useState(null);
 
     // =========================
     // FORM
@@ -287,15 +307,343 @@ function Books() {
         }
 
         if (cover.startsWith("/")) {
-            return `http://127.0.0.1:8001${cover}`;
+            return `http://127.0.0.1:8002${cover}`;
         }
 
-        return `http://127.0.0.1:8001/media/${cover}`;
+        return `http://127.0.0.1:8002/media/${cover}`;
+    };
+
+    // =========================================================
+    // FORMAT BOOK DATE
+    // =========================================================
+
+    const formatBookDate = (dateValue) => {
+        if (!dateValue) {
+            return "Not available";
+        }
+
+        const parsedDate = new Date(dateValue);
+
+        if (Number.isNaN(parsedDate.getTime())) {
+            return String(dateValue);
+        }
+
+        return parsedDate.toLocaleDateString("en-IN", {
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+        });
+    };
+
+    // =========================================================
+    // AI / SEMANTIC SEARCH HELPERS
+    // =========================================================
+
+    const AI_STOP_WORDS = new Set([
+        "a",
+        "an",
+        "and",
+        "are",
+        "about",
+        "best",
+        "book",
+        "books",
+        "for",
+        "from",
+        "find",
+        "give",
+        "i",
+        "in",
+        "into",
+        "is",
+        "me",
+        "of",
+        "on",
+        "please",
+        "recommend",
+        "recommendation",
+        "show",
+        "some",
+        "that",
+        "the",
+        "to",
+        "with",
+        "you",
+    ]);
+
+    const AI_QUERY_EXPANSIONS = {
+        ai: ["artificial", "intelligence"],
+        ml: ["machine", "learning"],
+        db: ["database", "databases"],
+        ds: ["data", "science", "data", "structures"],
+        dsa: ["data", "structures", "algorithms"],
+        js: ["javascript"],
+        py: ["python"],
+        cpp: ["c++", "cpp"],
+    };
+
+    const stemAiToken = (token) => {
+        if (token.length > 6 && token.endsWith("ies")) {
+            return `${token.slice(0, -3)}y`;
+        }
+
+        if (token.length > 5 && token.endsWith("ing")) {
+            return token.slice(0, -3);
+        }
+
+        if (token.length > 4 && token.endsWith("ed")) {
+            return token.slice(0, -2);
+        }
+
+        if (token.length > 4 && token.endsWith("s")) {
+            return token.slice(0, -1);
+        }
+
+        return token;
+    };
+
+    const tokenizeAiText = (value, isQuery = false) => {
+        const normalized = String(value || "")
+            .toLowerCase()
+            .replace(/[^a-z0-9+#]+/g, " ")
+            .trim();
+
+        if (!normalized) {
+            return [];
+        }
+
+        const baseTokens = normalized
+            .split(/\s+/)
+            .map((token) => token.trim())
+            .filter(Boolean)
+            .filter((token) => !AI_STOP_WORDS.has(token))
+            .map(stemAiToken);
+
+        if (!isQuery) {
+            return baseTokens;
+        }
+
+        const expanded = [...baseTokens];
+
+        baseTokens.forEach((token) => {
+            const aliases = AI_QUERY_EXPANSIONS[token] || [];
+            aliases.forEach((alias) => {
+                expanded.push(stemAiToken(alias));
+            });
+        });
+
+        return expanded;
+    };
+
+    const getAiDocumentFields = (book) => ({
+        title: String(book.title || ""),
+        author: getBookAuthor(book),
+        category: getBookCategory(book),
+        edition: String(book.edition || ""),
+        isbn: String(book.isbn || ""),
+        description: String(book.description || ""),
+    });
+
+    const buildAiDocumentVector = (book) => {
+        const fields = getAiDocumentFields(book);
+        const weightedText = [
+            fields.title,
+            fields.title,
+            fields.title,
+            fields.author,
+            fields.author,
+            fields.category,
+            fields.category,
+            fields.edition,
+            fields.description,
+            fields.isbn,
+        ].join(" ");
+
+        const tokens = tokenizeAiText(weightedText);
+        const termFrequency = new Map();
+
+        tokens.forEach((token) => {
+            termFrequency.set(
+                token,
+                (termFrequency.get(token) || 0) + 1
+            );
+        });
+
+        return {
+            fields,
+            termFrequency,
+            tokens,
+        };
+    };
+
+    const cosineSimilarity = (queryVector, documentVector, idf) => {
+        let dot = 0;
+        let queryMagnitude = 0;
+        let documentMagnitude = 0;
+
+        queryVector.forEach((value, token) => {
+            const weight = value * (idf.get(token) || 1);
+            queryMagnitude += weight * weight;
+        });
+
+        documentVector.forEach((value, token) => {
+            const weight = value * (idf.get(token) || 1);
+            documentMagnitude += weight * weight;
+        });
+
+        queryVector.forEach((queryValue, token) => {
+            const documentValue =
+                documentVector.get(token) || 0;
+
+            if (documentValue === 0) {
+                return;
+            }
+
+            const termIdf = idf.get(token) || 1;
+
+            dot +=
+                (queryValue * termIdf) *
+                (documentValue * termIdf);
+        });
+
+        if (
+            queryMagnitude === 0 ||
+            documentMagnitude === 0
+        ) {
+            return 0;
+        }
+
+        return (
+            dot /
+            (Math.sqrt(queryMagnitude) *
+                Math.sqrt(documentMagnitude))
+        );
+    };
+
+    const rankBooksWithAiSearch = (query, catalog) => {
+        const cleanQuery = String(query || "").trim();
+
+        if (!cleanQuery || catalog.length === 0) {
+            return [];
+        }
+
+        const queryTokens = tokenizeAiText(
+            cleanQuery,
+            true
+        );
+
+        if (queryTokens.length === 0) {
+            return [];
+        }
+
+        const queryFrequency = new Map();
+        queryTokens.forEach((token) => {
+            queryFrequency.set(
+                token,
+                (queryFrequency.get(token) || 0) + 1
+            );
+        });
+
+        const documents = catalog.map((book) => ({
+            book,
+            vector: buildAiDocumentVector(book),
+        }));
+
+        const documentFrequency = new Map();
+
+        documents.forEach(({ vector }) => {
+            const uniqueTokens = new Set(
+                vector.termFrequency.keys()
+            );
+
+            uniqueTokens.forEach((token) => {
+                documentFrequency.set(
+                    token,
+                    (documentFrequency.get(token) || 0) + 1
+                );
+            });
+        });
+
+        const totalDocuments = documents.length;
+        const idf = new Map();
+
+        documentFrequency.forEach((frequency, token) => {
+            idf.set(
+                token,
+                Math.log(
+                    (totalDocuments + 1) /
+                        (frequency + 1)
+                ) + 1
+            );
+        });
+
+        const ranked = documents
+            .map(({ book, vector }) => {
+                const score = cosineSimilarity(
+                    queryFrequency,
+                    vector.termFrequency,
+                    idf
+                );
+
+                const fields = vector.fields;
+                const normalizedQuery = tokenizeAiText(
+                    cleanQuery
+                );
+                const phrase = normalizedQuery.join(" " );
+
+                const titleText = tokenizeAiText(
+                    fields.title
+                ).join(" " );
+
+                const searchableText = [
+                    fields.title,
+                    fields.author,
+                    fields.category,
+                    fields.edition,
+                    fields.description,
+                    fields.isbn,
+                ]
+                    .map((item) =>
+                        tokenizeAiText(item).join(" " )
+                    )
+                    .join(" " );
+
+                let adjustedScore = score;
+
+                if (phrase && titleText.includes(phrase)) {
+                    adjustedScore += 0.35;
+                } else if (
+                    phrase &&
+                    searchableText.includes(phrase)
+                ) {
+                    adjustedScore += 0.15;
+                }
+
+                return {
+                    ...book,
+                    _aiScore: adjustedScore,
+                };
+            })
+            .filter((book) => book._aiScore > 0)
+            .sort((a, b) => {
+                if (b._aiScore !== a._aiScore) {
+                    return b._aiScore - a._aiScore;
+                }
+
+                return String(a.title || "").localeCompare(
+                    String(b.title || "")
+                );
+            });
+
+        return ranked;
     };
 
     // =========================
     // BUILD BOOK URL
     // =========================
+
+    const BOOKS_PER_PAGE = 24;
+
 
     const buildBookUrl = (
         nextSearch = search,
@@ -333,6 +681,12 @@ function Books() {
             );
         }
 
+        // Request 24 books from the Django pagination API.
+        params.append(
+            "page_size",
+            String(BOOKS_PER_PAGE)
+        );
+
         const queryString =
             params.toString();
 
@@ -349,6 +703,10 @@ function Books() {
         try {
             setLoading(true);
             setError("");
+            setAiError("");
+            setAiMode(false);
+            setAiResults([]);
+            setAiResultPage(1);
 
             const requestUrl =
                 url || buildBookUrl();
@@ -888,6 +1246,148 @@ function Books() {
         );
     };
 
+    // =========================================================
+    // AI SEARCH / LOCAL PAGINATION
+    // =========================================================
+
+    const showAiResultsPage = (results, pageNumber) => {
+        const safePage = Math.max(
+            1,
+            Math.min(
+                pageNumber,
+                Math.max(
+                    1,
+                    Math.ceil(
+                        results.length /
+                            BOOKS_PER_PAGE
+                    )
+                )
+            )
+        );
+
+        const start =
+            (safePage - 1) *
+            BOOKS_PER_PAGE;
+
+        const pageResults = results.slice(
+            start,
+            start + BOOKS_PER_PAGE
+        );
+
+        setBooks(pageResults);
+        setAiResultPage(safePage);
+
+        const totalPages = Math.max(
+            1,
+            Math.ceil(
+                results.length /
+                    BOOKS_PER_PAGE
+            )
+        );
+
+        setPreviousPage(
+            safePage > 1
+                ? "ai-previous"
+                : null
+        );
+
+        setNextPage(
+            safePage < totalPages
+                ? "ai-next"
+                : null
+        );
+    };
+
+    const runAiSearch = async (
+        query,
+        nextOrdering = ordering,
+        nextAuthor = selectedAuthor,
+        nextCategory = selectedCategory
+    ) => {
+        const trimmedQuery = String(
+            query || ""
+        ).trim();
+
+        if (!trimmedQuery) {
+            setAiMode(false);
+            setAiResults([]);
+            setAiResultPage(1);
+            fetchBooks(
+                buildBookUrl(
+                    "",
+                    nextOrdering,
+                    nextAuthor,
+                    nextCategory
+                )
+            );
+            return;
+        }
+
+        try {
+            setAiLoading(true);
+            setAiError("");
+            setError("");
+            setAiMode(true);
+            setShowSuggestions(false);
+
+            // Load the complete filtered catalogue so the AI ranking
+            // can discover books that are not on the current 24-book page.
+            const catalogUrl = buildBookUrl(
+                "",
+                nextOrdering,
+                nextAuthor,
+                nextCategory
+            );
+
+            const catalog = await fetchAllPages(
+                catalogUrl
+            );
+
+            const rankedResults =
+                rankBooksWithAiSearch(
+                    trimmedQuery,
+                    catalog
+                );
+
+            setAiResults(rankedResults);
+
+            if (rankedResults.length === 0) {
+                setBooks([]);
+                setNextPage(null);
+                setPreviousPage(null);
+                setAiResultPage(1);
+                setAiError(
+                    "No strong matches were found. Try a broader search such as 'Python programming', 'machine learning', or 'database'."
+                );
+                return;
+            }
+
+            showAiResultsPage(
+                rankedResults,
+                1
+            );
+
+        } catch (error) {
+            console.error(
+                "AI BOOK SEARCH ERROR:",
+                error.response?.data ||
+                    error.message
+            );
+
+            setBooks([]);
+            setNextPage(null);
+            setPreviousPage(null);
+            setAiResults([]);
+            setAiResultPage(1);
+            setAiError(
+                "AI search could not be completed. Please try again."
+            );
+
+        } finally {
+            setAiLoading(false);
+        }
+    };
+
     // =========================
     // SEARCH SUBMIT
     // =========================
@@ -901,13 +1401,11 @@ function Books() {
 
         setShowSuggestions(false);
 
-        fetchBooks(
-            buildBookUrl(
-                search,
-                ordering,
-                selectedAuthor,
-                selectedCategory
-            )
+        runAiSearch(
+            search,
+            ordering,
+            selectedAuthor,
+            selectedCategory
         );
     };
 
@@ -927,13 +1425,11 @@ function Books() {
 
         setShowSuggestions(false);
 
-        fetchBooks(
-            buildBookUrl(
-                title,
-                ordering,
-                selectedAuthor,
-                selectedCategory
-            )
+        runAiSearch(
+            title,
+            ordering,
+            selectedAuthor,
+            selectedCategory
         );
     };
 
@@ -950,13 +1446,11 @@ function Books() {
 
         saveRecentSearch(term);
 
-        fetchBooks(
-            buildBookUrl(
-                term,
-                ordering,
-                selectedAuthor,
-                selectedCategory
-            )
+        runAiSearch(
+            term,
+            ordering,
+            selectedAuthor,
+            selectedCategory
         );
     };
 
@@ -991,8 +1485,14 @@ function Books() {
 
         setSuggestions([]);
         setShowSuggestions(false);
+        setAiMode(false);
+        setAiResults([]);
+        setAiResultPage(1);
+        setAiError("");
 
-        fetchBooks("books/");
+        fetchBooks(
+            buildBookUrl("", "", "", "")
+        );
     };
 
     // =========================
@@ -1022,6 +1522,19 @@ function Books() {
         if (filterName === "ordering") {
             nextOrdering = value;
             setOrdering(value);
+        }
+
+        if (
+            aiMode &&
+            nextSearch.trim()
+        ) {
+            runAiSearch(
+                nextSearch,
+                nextOrdering,
+                nextAuthor,
+                nextCategory
+            );
+            return;
         }
 
         const url = buildBookUrl(
@@ -1341,6 +1854,19 @@ function Books() {
 
     const handleNextPage = () => {
         if (
+            aiMode &&
+            nextPage &&
+            !loading &&
+            !aiLoading
+        ) {
+            showAiResultsPage(
+                aiResults,
+                aiResultPage + 1
+            );
+            return;
+        }
+
+        if (
             nextPage &&
             !loading
         ) {
@@ -1349,6 +1875,19 @@ function Books() {
     };
 
     const handlePreviousPage = () => {
+        if (
+            aiMode &&
+            previousPage &&
+            !loading &&
+            !aiLoading
+        ) {
+            showAiResultsPage(
+                aiResults,
+                aiResultPage - 1
+            );
+            return;
+        }
+
         if (
             previousPage &&
             !loading
@@ -1415,6 +1954,18 @@ function Books() {
         recentSearches.length > 0;
 
     // =========================
+    // FULL DESCRIPTION
+    // =========================
+
+    const handleOpenDescription = (book) => {
+        setDescriptionBook(book);
+    };
+
+    const handleCloseDescription = () => {
+        setDescriptionBook(null);
+    };
+
+    // =========================
     // UI
     // =========================
 
@@ -1455,7 +2006,9 @@ function Books() {
                 <div className="d-flex align-items-center gap-2 flex-wrap">
 
                     <span className="badge bg-primary rounded-pill px-3 py-2">
-                        {books.length} Books
+                        {aiMode
+                            ? `${aiResults.length} Matches`
+                            : `${books.length} Books`}
                     </span>
 
                     {canManageBooks && (
@@ -1550,10 +2103,18 @@ function Books() {
                         </h5>
 
                         <p className="text-muted small mb-0">
-                            Search by title, author or
-                            ISBN. Start typing to see
-                            suggestions.
+                            Describe what you want naturally. AI ranking uses
+                            book titles, authors, categories, editions and descriptions.
                         </p>
+
+                        <div className="mt-2">
+                            <span className="badge bg-primary-subtle text-primary rounded-pill">
+                                🤖 AI-powered search
+                            </span>
+                            <span className="small text-muted ms-2">
+                                Try: “beginner Python programming”
+                            </span>
+                        </div>
 
                     </div>
 
@@ -1579,7 +2140,7 @@ function Books() {
                                 <input
                                     type="text"
                                     className="form-control border-start-0"
-                                    placeholder="Search books, authors or ISBN..."
+                                    placeholder="Try “machine learning for beginners” or “books about databases”..."
                                     value={
                                         search
                                     }
@@ -1598,11 +2159,20 @@ function Books() {
                                         type="button"
                                         className="btn btn-light border"
                                         onClick={() => {
-                                            setSearch(
-                                                ""
-                                            );
-                                            setSuggestions(
-                                                []
+                                            setSearch("");
+                                            setSuggestions([]);
+                                            setShowSuggestions(false);
+                                            setAiMode(false);
+                                            setAiResults([]);
+                                            setAiResultPage(1);
+                                            setAiError("");
+                                            fetchBooks(
+                                                buildBookUrl(
+                                                    "",
+                                                    ordering,
+                                                    selectedAuthor,
+                                                    selectedCategory
+                                                )
                                             );
                                         }}
                                     >
@@ -1610,12 +2180,14 @@ function Books() {
                                     </button>
                                 )}
 
-                                <button
+                                <ButtonLoading
                                     type="submit"
                                     className="btn btn-primary px-4"
+                                    loading={aiLoading}
+                                    loadingText="Ranking..."
                                 >
                                     Search
-                                </button>
+                                </ButtonLoading>
 
                             </div>
 
@@ -2052,57 +2624,63 @@ function Books() {
 
             </div>
 
+            {aiError && (
+                <div className="alert alert-info border-0 shadow-sm mb-4" role="status">
+                    <div className="d-flex gap-2">
+                        <span>🤖</span>
+                        <div>
+                            <div className="fw-semibold">AI search</div>
+                            <div className="small">{aiError}</div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* =========================
                 ERROR
             ========================== */}
 
             {error && (
-                <div
-                    className="alert alert-danger border-0 shadow-sm"
-                    role="alert"
-                >
-
-                    <h6 className="fw-bold">
-                        Unable to complete request
-                    </h6>
-
-                    <pre className="mb-0 text-danger small">
-                        {error}
-                    </pre>
-
-                    <button
-                        className="btn btn-outline-danger btn-sm mt-3"
-                        onClick={() =>
-                            fetchBooks()
-                        }
-                    >
-                        🔄 Try Again
-                    </button>
-
-                </div>
+                <ErrorState
+                    title="Unable to load books"
+                    message="The library books could not be loaded. Please try again."
+                    action={
+                        <button
+                            type="button"
+                            className="btn btn-outline-danger btn-sm"
+                            onClick={() => fetchBooks()}
+                        >
+                            🔄 Try Again
+                        </button>
+                    }
+                />
             )}
 
             {/* =========================
                 LOADING
             ========================== */}
 
-            {loading && (
-                <div className="text-center py-5">
-
-                    <div
-                        className="spinner-border text-primary"
-                        role="status"
-                    >
-                        <span className="visually-hidden">
-                            Loading...
-                        </span>
-                    </div>
-
-                    <p className="text-muted mt-3 mb-0">
-                        Finding books...
-                    </p>
-
-                </div>
+            {(loading || aiLoading) && (
+                <LoadingStages
+                    title={
+                        aiLoading
+                            ? "Understanding your search"
+                            : "Finding books"
+                    }
+                    stages={
+                        aiLoading
+                            ? [
+                                  "Reading your natural-language query",
+                                  "Searching the complete book catalogue",
+                                  "Ranking the closest matches",
+                              ]
+                            : [
+                                  "Connecting to the library",
+                                  "Searching books and metadata",
+                                  "Applying filters and sorting",
+                              ]
+                    }
+                />
             )}
 
             {/* =========================
@@ -2110,55 +2688,48 @@ function Books() {
             ========================== */}
 
             {!loading &&
+                !aiLoading &&
                 !error &&
                 books.length === 0 && (
+                    <EmptyState
+                        icon="📚"
+                        title={
+                            aiMode
+                                ? "No close AI matches"
+                                : "No books found"
+                        }
+                        message={
+                            aiMode
+                                ? "Try different words or a broader description of the kind of book you want."
+                                : "Try changing your search or filters to find books in the library."
+                        }
+                        action={
+                            <>
+                                {(search ||
+                                    ordering ||
+                                    selectedAuthor ||
+                                    selectedCategory) && (
+                                    <button
+                                        type="button"
+                                        className="btn btn-outline-primary me-2"
+                                        onClick={handleClearFilters}
+                                    >
+                                        Clear Filters
+                                    </button>
+                                )}
 
-                    <div className="card border-0 shadow-sm">
-
-                        <div className="card-body text-center py-5">
-
-                            <div className="display-4 mb-3">
-                                📚
-                            </div>
-
-                            <h4 className="fw-bold">
-                                No books found
-                            </h4>
-
-                            <p className="text-muted mb-4">
-                                Try changing your search
-                                or filters.
-                            </p>
-
-                            {(search ||
-                                ordering ||
-                                selectedAuthor ||
-                                selectedCategory) && (
-
-                                <button
-                                    className="btn btn-outline-primary me-2"
-                                    onClick={
-                                        handleClearFilters
-                                    }
-                                >
-                                    Clear Filters
-                                </button>
-                            )}
-
-                            {canManageBooks && (
-                                <button
-                                    className="btn btn-primary"
-                                    onClick={
-                                        handleAddBook
-                                    }
-                                >
-                                    + Add First Book
-                                </button>
-                            )}
-
-                        </div>
-
-                    </div>
+                                {canManageBooks && (
+                                    <button
+                                        type="button"
+                                        className="btn btn-primary"
+                                        onClick={handleAddBook}
+                                    >
+                                        + Add First Book
+                                    </button>
+                                )}
+                            </>
+                        }
+                    />
                 )}
 
             {/* =========================
@@ -2166,6 +2737,7 @@ function Books() {
             ========================== */}
 
             {!loading &&
+                !aiLoading &&
                 !error &&
                 books.length > 0 && (
 
@@ -2176,22 +2748,41 @@ function Books() {
                             <div>
 
                                 <h5 className="fw-bold mb-1">
-                                    Library Collection
+                                    {aiMode
+                                        ? "AI-ranked matches"
+                                        : "Library Collection"}
                                 </h5>
 
                                 <small className="text-muted">
-                                    Explore the library
-                                    collection
+                                    {aiMode
+                                        ? `Closest matches for “${search}”`
+                                        : "Explore the library collection"}
                                 </small>
 
                             </div>
 
                             <span className="text-muted small">
-                                Showing{" "}
-                                <strong>
-                                    {books.length}
-                                </strong>{" "}
-                                books
+                                {aiMode ? (
+                                    <>
+                                        Showing{" "}
+                                        <strong>
+                                            {books.length}
+                                        </strong>{" "}
+                                        of{" "}
+                                        <strong>
+                                            {aiResults.length}
+                                        </strong>{" "}
+                                        matches
+                                    </>
+                                ) : (
+                                    <>
+                                        Showing{" "}
+                                        <strong>
+                                            {books.length}
+                                        </strong>{" "}
+                                        books
+                                    </>
+                                )}
                             </span>
 
                         </div>
@@ -2315,9 +2906,63 @@ function Books() {
                                                         }
                                                     </p>
 
+                                                    {/* BOOK DESCRIPTION */}
+
+                                                    <div className="mb-3">
+
+                                                        <div className="small fw-semibold text-dark mb-1">
+                                                            📝 Description
+                                                        </div>
+
+                                                        <p
+                                                            className="small text-muted mb-1"
+                                                            style={{
+                                                                display: "-webkit-box",
+                                                                WebkitLineClamp: 3,
+                                                                WebkitBoxOrient: "vertical",
+                                                                overflow: "hidden",
+                                                                minHeight: "4.5em",
+                                                            }}
+                                                        >
+                                                            {
+                                                                book.description ||
+                                                                "No description available for this book."
+                                                            }
+                                                        </p>
+
+                                                        {book.description && String(book.description).trim() && (
+                                                            <button
+                                                                type="button"
+                                                                className="btn btn-link btn-sm p-0 text-decoration-none"
+                                                                onClick={() =>
+                                                                    handleOpenDescription(book)
+                                                                }
+                                                            >
+                                                                More ↗
+                                                            </button>
+                                                        )}
+
+                                                    </div>
+
+                                                    {/* ISSUE / PUBLISHED DATE */}
+
                                                     <div className="small text-muted mb-3">
 
-                                                        <div>
+                                                        <div className="d-flex justify-content-between align-items-center gap-2">
+
+                                                            <span className="fw-semibold text-dark">
+                                                                📅 Issued / Published Date
+                                                            </span>
+
+                                                            <span className="text-end">
+                                                                {formatBookDate(
+                                                                    book.published_date
+                                                                )}
+                                                            </span>
+
+                                                        </div>
+
+                                                        <div className="mt-1">
                                                             ISBN:{" "}
                                                             <span className="font-monospace">
                                                                 {
@@ -2414,35 +3059,21 @@ function Books() {
                                                                     }
 
                                                                     return (
-                                                                        <button
+                                                                        <ButtonLoading
                                                                             type="button"
                                                                             className="btn btn-success w-100"
                                                                             onClick={() =>
-                                                                                handleBorrowBook(
-                                                                                    book
-                                                                                )
+                                                                                handleBorrowBook(book)
                                                                             }
+                                                                            loading={borrowing}
+                                                                            loadingText="Submitting Request..."
                                                                             disabled={
-                                                                                borrowing ||
-                                                                                bookActionLoading !==
-                                                                                    null ||
+                                                                                bookActionLoading !== null ||
                                                                                 memberRequestLoading
                                                                             }
                                                                         >
-                                                                            {borrowing ? (
-                                                                                <>
-                                                                                    <span
-                                                                                        className="spinner-border spinner-border-sm me-2"
-                                                                                        role="status"
-                                                                                    />
-                                                                                    Submitting Request...
-                                                                                </>
-                                                                            ) : (
-                                                                                <>
-                                                                                    📚 Borrow Book
-                                                                                </>
-                                                                            )}
-                                                                        </button>
+                                                                            📚 Borrow Book
+                                                                        </ButtonLoading>
                                                                     );
                                                                 })()}
 
@@ -2899,38 +3530,14 @@ function Books() {
                                         Cancel
                                     </button>
 
-                                    <button
+                                    <ButtonLoading
                                         type="submit"
                                         className="btn btn-primary px-4"
-                                        disabled={
-                                            saving
-                                        }
+                                        loading={saving}
+                                        loadingText="Saving..."
                                     >
-
-                                        {saving ? (
-
-                                            <>
-
-                                                <span
-                                                    className="spinner-border spinner-border-sm me-2"
-                                                    role="status"
-                                                />
-
-                                                Saving...
-
-                                            </>
-
-                                        ) : editingBook ? (
-
-                                            "Update Book"
-
-                                        ) : (
-
-                                            "Add Book"
-
-                                        )}
-
-                                    </button>
+                                        {editingBook ? "Update Book" : "Add Book"}
+                                    </ButtonLoading>
 
                                 </div>
 
@@ -2942,6 +3549,106 @@ function Books() {
 
                 </div>
 
+            )}
+
+            {/* FULL DESCRIPTION MODAL */}
+
+            {descriptionBook && (
+                <>
+                    <div
+                        className="modal fade show d-block"
+                        tabIndex="-1"
+                        role="dialog"
+                        aria-modal="true"
+                        style={{
+                            zIndex: 1065,
+                        }}
+                    >
+
+                        <div
+                            className="modal-dialog modal-dialog-centered modal-lg"
+                            role="document"
+                        >
+
+                            <div className="modal-content border-0 shadow">
+
+                                <div className="modal-header">
+
+                                    <div>
+                                        <h5 className="modal-title fw-bold mb-1">
+                                            📖 {descriptionBook.title}
+                                        </h5>
+                                        <small className="text-muted">
+                                            Full Book Description
+                                        </small>
+                                    </div>
+
+                                    <button
+                                        type="button"
+                                        className="btn-close"
+                                        aria-label="Close"
+                                        onClick={handleCloseDescription}
+                                    />
+
+                                </div>
+
+                                <div className="modal-body">
+
+                                    <div className="d-flex flex-wrap gap-2 mb-3">
+
+                                        {getBookAuthor(descriptionBook) && (
+                                            <span className="badge bg-primary-subtle text-primary">
+                                                ✍️ {getBookAuthor(descriptionBook)}
+                                            </span>
+                                        )}
+
+                                        {getBookCategory(descriptionBook) && (
+                                            <span className="badge bg-secondary-subtle text-secondary">
+                                                🏷️ {getBookCategory(descriptionBook)}
+                                            </span>
+                                        )}
+
+                                    </div>
+
+                                    <p
+                                        className="mb-0"
+                                        style={{
+                                            whiteSpace: "pre-line",
+                                            lineHeight: 1.8,
+                                        }}
+                                    >
+                                        {
+                                            descriptionBook.description ||
+                                            "No description available for this book."
+                                        }
+                                    </p>
+
+                                </div>
+
+                                <div className="modal-footer">
+                                    <button
+                                        type="button"
+                                        className="btn btn-secondary"
+                                        onClick={handleCloseDescription}
+                                    >
+                                        Close
+                                    </button>
+                                </div>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                    <div
+                        className="modal-backdrop fade show"
+                        style={{
+                            zIndex: 1060,
+                        }}
+                        onClick={handleCloseDescription}
+                    />
+                </>
             )}
 
             {/* MODAL BACKDROP */}

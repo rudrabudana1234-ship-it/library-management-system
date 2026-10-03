@@ -1,3 +1,7 @@
+import LoadingStages from "../components/loadingstage";
+import ButtonLoading from "../components/buttonloading";
+import EmptyState from "../components/emptystate";
+import ErrorState from "../components/errorstate";
 import { useEffect, useState } from "react";
 import api from "../services/api";
 
@@ -362,27 +366,14 @@ function ReturnRequests() {
     if (loading) {
         return (
             <div className="container py-5">
-                <div className="text-center">
-
-                    <div
-                        className="spinner-border text-primary mb-3"
-                        role="status"
-                    >
-                        <span className="visually-hidden">
-                            Loading...
-                        </span>
-                    </div>
-
-                    <h5 className="text-muted">
-                        Loading return requests...
-                    </h5>
-
-                    <small className="text-muted">
-                        Please wait while we fetch
-                        the requests.
-                    </small>
-
-                </div>
+                <LoadingStages
+                    title="Loading return requests"
+                    stages={[
+                        "Connecting to return requests",
+                        "Fetching pending returns",
+                        "Preparing request details",
+                    ]}
+                />
             </div>
         );
     }
@@ -417,30 +408,17 @@ function ReturnRequests() {
 
                 </div>
 
-                <button
+                <ButtonLoading
                     type="button"
                     className="btn btn-outline-primary"
+                    loading={refreshing}
+                    loadingText="Refreshing..."
                     onClick={() =>
-                        fetchReturnRequests(
-                            false
-                        )
+                        fetchReturnRequests(false)
                     }
-                    disabled={refreshing}
                 >
-                    {refreshing ? (
-                        <>
-                            <span
-                                className="spinner-border spinner-border-sm me-2"
-                                role="status"
-                            />
-                            Refreshing...
-                        </>
-                    ) : (
-                        <>
-                            🔄 Refresh
-                        </>
-                    )}
-                </button>
+                    🔄 Refresh
+                </ButtonLoading>
 
             </div>
 
@@ -477,27 +455,33 @@ function ReturnRequests() {
             ========================== */}
 
             {error && (
-                <div
-                    className="alert alert-danger border-0 shadow-sm alert-dismissible fade show"
-                    role="alert"
-                >
-                    <strong>
-                        ⚠️ Error
-                    </strong>
-
-                    <div className="small mt-1">
-                        {error}
-                    </div>
-
-                    <button
-                        type="button"
-                        className="btn-close"
-                        onClick={() =>
-                            setError("")
-                        }
-                        aria-label="Close"
-                    />
-                </div>
+                <ErrorState
+                    icon="⚠️"
+                    title="Unable to load return requests"
+                    message={error}
+                    className="mb-4"
+                    action={
+                        <div className="d-flex justify-content-center gap-2 flex-wrap">
+                            <button
+                                type="button"
+                                className="btn btn-primary"
+                                onClick={() => {
+                                    setError("");
+                                    fetchReturnRequests();
+                                }}
+                            >
+                                Try Again
+                            </button>
+                            <button
+                                type="button"
+                                className="btn btn-outline-secondary"
+                                onClick={() => setError("")}
+                            >
+                                Dismiss
+                            </button>
+                        </div>
+                    }
+                />
             )}
 
             {/* =========================
@@ -609,26 +593,24 @@ function ReturnRequests() {
 
             {returnRequests.length === 0 ? (
 
-                <div className="card border-0 shadow-sm">
-
-                    <div className="card-body text-center py-5">
-
-                        <div className="display-4 mb-3">
-                            📭
-                        </div>
-
-                        <h4 className="fw-bold">
-                            No return requests
-                        </h4>
-
-                        <p className="text-muted mb-0">
-                            There are currently no
-                            return requests to review.
-                        </p>
-
-                    </div>
-
-                </div>
+                <EmptyState
+                    icon="📭"
+                    title="No return requests"
+                    message="There are currently no return requests to review."
+                    action={
+                        <ButtonLoading
+                            type="button"
+                            className="btn btn-outline-primary"
+                            loading={refreshing}
+                            loadingText="Refreshing..."
+                            onClick={() =>
+                                fetchReturnRequests(false)
+                            }
+                        >
+                            🔄 Refresh
+                        </ButtonLoading>
+                    }
+                />
 
             ) : (
 
@@ -1057,35 +1039,17 @@ function ReturnRequests() {
 
                                                                 {/* PROCESS BUTTON */}
 
-                                                                <button
+                                                                <ButtonLoading
                                                                     type="button"
                                                                     className="btn btn-success w-100"
+                                                                    loading={isProcessing}
+                                                                    loadingText="Processing..."
                                                                     onClick={() =>
-                                                                        processReturn(
-                                                                            request
-                                                                        )
-                                                                    }
-                                                                    disabled={
-                                                                        isProcessing
+                                                                        processReturn(request)
                                                                     }
                                                                 >
-
-                                                                    {isProcessing ? (
-                                                                        <>
-                                                                            <span
-                                                                                className="spinner-border spinner-border-sm me-2"
-                                                                                role="status"
-                                                                            />
-
-                                                                            Processing...
-                                                                        </>
-                                                                    ) : (
-                                                                        <>
-                                                                            ✓ Process Return
-                                                                        </>
-                                                                    )}
-
-                                                                </button>
+                                                                    ✓ Process Return
+                                                                </ButtonLoading>
 
                                                             </>
 

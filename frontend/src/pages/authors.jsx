@@ -1,3 +1,7 @@
+import LoadingStages from "../components/loadingstage";
+import ButtonLoading from "../components/buttonloading";
+import EmptyState from "../components/emptystate";
+import ErrorState from "../components/errorstate";
 import { useEffect, useState } from "react";
 import api from "../services/api";
 import { useAuth } from "../context/authcontext";
@@ -481,29 +485,18 @@ function Authors() {
             ========================== */}
 
             {error && (
-                <div
-                    className="alert alert-danger"
-                    role="alert"
-                >
-
-                    <h6 className="fw-bold">
-                        Unable to complete request
-                    </h6>
-
-                    <pre className="mb-0 text-danger">
-                        {error}
-                    </pre>
-
-                    <button
-                        className="btn btn-outline-danger btn-sm mt-3"
-                        onClick={() =>
-                            fetchAuthors()
-                        }
-                    >
-                        🔄 Try Again
-                    </button>
-
-                </div>
+                <ErrorState
+                    title="Unable to load authors"
+                    message="The author list could not be loaded. Please try again."
+                    action={
+                        <button
+                            className="btn btn-outline-danger btn-sm"
+                            onClick={() => fetchAuthors()}
+                        >
+                            🔄 Try Again
+                        </button>
+                    }
+                />
             )}
 
             {/* =========================
@@ -511,22 +504,14 @@ function Authors() {
             ========================== */}
 
             {loading && (
-                <div className="text-center py-5">
-
-                    <div
-                        className="spinner-border text-primary"
-                        role="status"
-                    >
-                        <span className="visually-hidden">
-                            Loading...
-                        </span>
-                    </div>
-
-                    <p className="text-muted mt-3 mb-0">
-                        Loading authors...
-                    </p>
-
-                </div>
+                <LoadingStages
+                    title="Loading authors"
+                    stages={[
+                        "Connecting to author records",
+                        "Fetching authors",
+                        "Preparing the author list",
+                    ]}
+                />
             )}
 
             {/* =========================
@@ -536,57 +521,32 @@ function Authors() {
             {!loading &&
                 !error &&
                 authors.length === 0 && (
-
-                    <div className="card border-0 shadow-sm">
-
-                        <div className="card-body text-center py-5">
-
-                            <div className="fs-1 mb-3">
-                                ✍️
-                            </div>
-
-                            <h5 className="fw-bold">
-                                No authors found
-                            </h5>
-
-                            <p className="text-muted mb-3">
-
-                                {activeSearch
-                                    ? `No authors match "${activeSearch}".`
-                                    : "Authors will appear here once they are added to the library."
-                                }
-
-                            </p>
-
-                            {activeSearch ? (
-
+                    <EmptyState
+                        icon="✍️"
+                        title="No authors found"
+                        message={
+                            activeSearch
+                                ? `No authors match "${activeSearch}".`
+                                : "Authors will appear here once they are added to the library."
+                        }
+                        action={
+                            activeSearch ? (
                                 <button
                                     className="btn btn-outline-primary"
-                                    onClick={
-                                        handleClearSearch
-                                    }
+                                    onClick={handleClearSearch}
                                 >
                                     Clear Search
                                 </button>
-
-                            ) : (
-
-                                canManageAuthors && (
-                                    <button
-                                        className="btn btn-primary"
-                                        onClick={
-                                            handleAddAuthor
-                                        }
-                                    >
-                                        + Add First Author
-                                    </button>
-                                )
-
-                            )}
-
-                        </div>
-
-                    </div>
+                            ) : canManageAuthors ? (
+                                <button
+                                    className="btn btn-primary"
+                                    onClick={handleAddAuthor}
+                                >
+                                    + Add First Author
+                                </button>
+                            ) : null
+                        }
+                    />
                 )}
 
             {/* =========================
@@ -951,34 +911,16 @@ function Authors() {
                                         Cancel
                                     </button>
 
-                                    <button
+                                    <ButtonLoading
                                         type="submit"
+                                        loading={saving}
+                                        loadingText="Saving..."
                                         className="btn btn-primary"
-                                        disabled={saving}
                                     >
-
-                                        {saving ? (
-
-                                            <>
-                                                <span
-                                                    className="spinner-border spinner-border-sm me-2"
-                                                    role="status"
-                                                ></span>
-
-                                                Saving...
-                                            </>
-
-                                        ) : editingAuthor ? (
-
-                                            "Update Author"
-
-                                        ) : (
-
-                                            "Add Author"
-
-                                        )}
-
-                                    </button>
+                                        {editingAuthor
+                                            ? "Update Author"
+                                            : "Add Author"}
+                                    </ButtonLoading>
 
                                 </div>
 

@@ -1,3 +1,7 @@
+import LoadingStages from "../components/loadingstage";
+import ButtonLoading from "../components/buttonloading";
+import EmptyState from "../components/emptystate";
+import ErrorState from "../components/errorstate";
 import { useEffect, useState } from "react";
 import api from "../services/api";
 
@@ -9,6 +13,7 @@ function Admin() {
 
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
+    const [actionLoading, setActionLoading] = useState(null);
 
 
     // ==========================================
@@ -96,6 +101,8 @@ function Admin() {
 
         try {
 
+            setActionLoading(`request-${userId}-${action}`);
+
             await api.patch(
                 `auth/admin/librarian-requests/${userId}/`,
                 {
@@ -103,7 +110,7 @@ function Admin() {
                 }
             );
 
-            fetchAdminData();
+            await fetchAdminData();
 
         } catch (err) {
 
@@ -112,6 +119,9 @@ function Admin() {
             alert(
                 "Unable to process the request."
             );
+        } finally {
+
+            setActionLoading(null);
         }
     };
 
@@ -127,6 +137,8 @@ function Admin() {
 
         try {
 
+            setActionLoading(`librarian-${userId}`);
+
             await api.patch(
                 `auth/admin/librarians/${userId}/status/`,
                 {
@@ -134,7 +146,7 @@ function Admin() {
                 }
             );
 
-            fetchAdminData();
+            await fetchAdminData();
 
         } catch (err) {
 
@@ -143,6 +155,9 @@ function Admin() {
             alert(
                 "Unable to update librarian status."
             );
+        } finally {
+
+            setActionLoading(null);
         }
     };
 
@@ -152,23 +167,16 @@ function Admin() {
     // ==========================================
 
     if (loading) {
-
         return (
             <div className="container py-5">
-
-                <div className="text-center">
-
-                    <div
-                        className="spinner-border"
-                        role="status"
-                    />
-
-                    <p className="mt-3 text-muted">
-                        Loading admin dashboard...
-                    </p>
-
-                </div>
-
+                <LoadingStages
+                    title="Loading admin dashboard"
+                    stages={[
+                        "Checking admin access",
+                        "Fetching users and librarian requests",
+                        "Preparing administration tools",
+                    ]}
+                />
             </div>
         );
     }
@@ -200,9 +208,20 @@ function Admin() {
 
             {error && (
 
-                <div className="alert alert-danger">
-                    {error}
-                </div>
+                <ErrorState
+                    className="mb-4"
+                    title="Unable to load admin dashboard"
+                    message={error}
+                    action={
+                        <button
+                            type="button"
+                            className="btn btn-primary"
+                            onClick={fetchAdminData}
+                        >
+                            Try Again
+                        </button>
+                    }
+                />
 
             )}
 
@@ -407,17 +426,11 @@ function Admin() {
 
                     {requests.length === 0 ? (
 
-                        <div className="text-center py-4">
-
-                            <div className="fs-1">
-                                ✅
-                            </div>
-
-                            <p className="text-muted mb-0">
-                                No pending librarian requests.
-                            </p>
-
-                        </div>
+                        <EmptyState
+                            icon="✅"
+                            title="No pending librarian requests"
+                            message="There are no librarian applications waiting for review."
+                        />
 
                     ) : (
 
@@ -498,7 +511,12 @@ function Admin() {
 
                                                     <div className="d-flex justify-content-end gap-2">
 
-                                                        <button
+                                                        <ButtonLoading
+                                                            loading={
+                                                                actionLoading ===
+                                                                `request-${request.id}-approve`
+                                                            }
+                                                            loadingText="Approving..."
                                                             className="btn btn-success btn-sm"
                                                             onClick={() =>
                                                                 handleRequest(
@@ -508,9 +526,14 @@ function Admin() {
                                                             }
                                                         >
                                                             ✅ Approve
-                                                        </button>
+                                                        </ButtonLoading>
 
-                                                        <button
+                                                        <ButtonLoading
+                                                            loading={
+                                                                actionLoading ===
+                                                                `request-${request.id}-reject`
+                                                            }
+                                                            loadingText="Rejecting..."
                                                             className="btn btn-outline-danger btn-sm"
                                                             onClick={() =>
                                                                 handleRequest(
@@ -520,7 +543,7 @@ function Admin() {
                                                             }
                                                         >
                                                             ❌ Reject
-                                                        </button>
+                                                        </ButtonLoading>
 
                                                     </div>
 
@@ -575,17 +598,11 @@ function Admin() {
 
                     {librarians.length === 0 ? (
 
-                        <div className="text-center py-4">
-
-                            <div className="fs-1">
-                                👨‍💼
-                            </div>
-
-                            <p className="text-muted mb-0">
-                                No librarians found.
-                            </p>
-
-                        </div>
+                        <EmptyState
+                            icon="👨‍💼"
+                            title="No librarians found"
+                            message="There are currently no librarian accounts to manage."
+                        />
 
                     ) : (
 
@@ -693,7 +710,16 @@ function Admin() {
 
                                                 <td className="text-end">
 
-                                                    <button
+                                                    <ButtonLoading
+                                                        loading={
+                                                            actionLoading ===
+                                                            `librarian-${librarian.id}`
+                                                        }
+                                                        loadingText={
+                                                            librarian.is_active
+                                                                ? "Deactivating..."
+                                                                : "Activating..."
+                                                        }
                                                         className={
                                                             librarian.is_active
                                                                 ? "btn btn-outline-danger btn-sm"
@@ -706,12 +732,10 @@ function Admin() {
                                                             )
                                                         }
                                                     >
-
                                                         {librarian.is_active
                                                             ? "Deactivate"
                                                             : "Activate"}
-
-                                                    </button>
+                                                    </ButtonLoading>
 
                                                 </td>
 

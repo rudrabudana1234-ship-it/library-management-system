@@ -1,0 +1,268 @@
+/* =========================================================
+   LMS DARK MODE
+   Global styling so existing Bootstrap-based pages inherit
+   the selected theme without changing every page component.
+========================================================= */
+
+:root {
+    color-scheme: light;
+}
+
+html[data-bs-theme="dark"] {
+    color-scheme: dark;
+}
+
+html,
+body,
+#root {
+    min-height: 100%;
+}
+
+html[data-bs-theme="dark"] body {
+    background-color: #111827;
+    color: #f3f4f6;
+}
+
+body {
+    transition:
+        background-color 0.2s ease,
+        color 0.2s ease;
+}
+
+/* ---------------------------------------------------------
+   PAGE / SURFACE COLORS
+--------------------------------------------------------- */
+
+.lms-dark-mode {
+    --lms-bg: #111827;
+    --lms-surface: #1f2937;
+    --lms-surface-2: #273449;
+    --lms-border: #374151;
+    --lms-text: #f3f4f6;
+    --lms-muted: #aeb8c7;
+}
+
+.lms-dark-mode,
+.lms-dark-mode body {
+    background-color: var(--lms-bg);
+    color: var(--lms-text);
+}
+
+.lms-dark-mode .bg-white,
+.lms-dark-mode .bg-light,
+.lms-dark-mode .card,
+.lms-dark-mode .modal-content,
+.lms-dark-mode .dropdown-menu,
+.lms-dark-mode .list-group-item,
+.lms-dark-mode .offcanvas,
+.lms-dark-mode .popover,
+.lms-dark-mode .toast {
+    background-color: var(--lms-surface) !important;
+    color: var(--lms-text);
+}
+
+.lms-dark-mode .bg-body-secondary,
+.lms-dark-mode .bg-secondary-subtle,
+.lms-dark-mode .bg-primary-subtle,
+.lms-dark-mode .bg-info-subtle,
+.lms-dark-mode .bg-success-subtle,
+.lms-dark-mode .bg-warning-subtle,
+.lms-dark-mode .bg-danger-subtle {
+    color: var(--lms-text) !important;
+}
+
+/* ---------------------------------------------------------
+   TEXT
+--------------------------------------------------------- */
+
+.lms-dark-mode .text-dark {
+    color: var(--lms-text) !important;
+}
+
+.lms-dark-mode .text-muted {
+    color: var(--lms-muted) !important;
+}
+
+.lms-dark-mode .text-body,
+.lms-dark-mode .text-body-emphasis {
+    color: var(--lms-text) !important;
+}
+
+/* ---------------------------------------------------------
+   BORDERS / HEADERS
+--------------------------------------------------------- */
+
+.lms-dark-mode .border,
+.lms-dark-mode .border-top,
+.lms-dark-mode .border-end,
+.lms-dark-mode .border-bottom,
+.lms-dark-mode .border-start,
+.lms-dark-mode .card,
+.lms-dark-mode .card-header,
+.lms-dark-mode .card-footer,
+.lms-dark-mode .modal-header,
+.lms-dark-mode .modal-footer,
+.lms-dark-mode .dropdown-divider,
+.lms-dark-mode hr {
+    border-color: var(--lms-border) !important;
+}
+
+.lms-dark-mode .card-header,
+.lms-dark-mode .card-footer {
+    background-color: var(--lms-surface) !important;
+}
+
+/* ---------------------------------------------------------
+   FORMS
+--------------------------------------------------------- */
+
+.lms-dark-mode .form-control,
+.lms-dark-mode .form-select,
+.lms-dark-mode .input-group-text,
+.lms-dark-mode textarea,
+.lms-dark-mode input,
+.lms-dark-mode select {
+    background-color: #172033;
+    color: var(--lms-text);
+    border-color: var(--lms-border);
+}
+
+.lms-dark-mode .form-control::placeholder,
+.lms-dark-mode textarea::placeholder,
+.lms-dark-mode input::placeholder {
+    color: #8995a7;
+    opacity: 1;
+}
+
+.lms-dark-mode .form-control:focus,
+.lms-dark-mode .form-select:focus {
+    background-color: #172033;
+    color: var(--lms-text);
+    border-color: #6ea8fe;
+}
+
+.lms-dark-mode .form-check-label,
+.lms-dark-mode .form-label {
+    color: var(--lms-text);
+}
+
+/* ---------------------------------------------------------
+   TABLES
+--------------------------------------------------------- */
+
+.lms-dark-mode .table {
+    --bs-table-color: var(--lms-text);
+    --bs-table-bg: transparent;
+    --bs-table-border-color: var(--lms-border);
+}
+
+.lms-dark-mode .table-light {
+    --bs-table-color: var(--lms-text);
+    --bs-table-bg: var(--lms-surface-2);
+}
+
+.lms-dark-mode .table-hover > tbody > tr:hover > * {
+    --bs-table-accent-bg: rgba(255, 255, 255, 0.045);
+}
+
+/* ---------------------------------------------------------
+   DROPDOWNS / NAVIGATION
+--------------------------------------------------------- */
+
+.lms-dark-mode .dropdown-menu {
+    border-color: var(--lms-border);
+}
+
+.lms-dark-mode .dropdown-item {
+    color: var(--lms-text);
+}
+
+.lms-dark-mode .dropdown-item:hover,
+.lms-dark-mode .dropdown-item:focus {
+    background-color: var(--lms-surface-2);
+    color: #ffffff;
+}
+
+.lms-dark-mode .dropdown-item.text-danger {
+    color: #ff8f8f !important;
+}
+
+.lms-dark-mode .nav-tabs {
+    border-color: var(--lms-border);
+}
+
+.lms-dark-mode .nav-tabs .nav-link {
+    color: var(--lms-muted);
+}
+
+.lms-dark-mode .nav-tabs .nav-link.active {
+    background-color: var(--lms-surface);
+    color: var(--lms-text);
+    border-color: var(--lms-border) var(--lms-border) var(--lms-surface);
+}
+
+.lms-dark-mode .nav-tabs .nav-link:hover {
+    border-color: var(--lms-border);
+}
+
+/* ---------------------------------------------------------
+   ALERTS / SPECIAL LIGHT COMPONENTS
+--------------------------------------------------------- */
+
+.lms-dark-mode .alert-light {
+    background-color: var(--lms-surface-2);
+    color: var(--lms-text);
+    border-color: var(--lms-border);
+}
+
+.lms-dark-mode .list-group-item-action:hover,
+.lms-dark-mode .list-group-item-action:focus {
+    background-color: var(--lms-surface-2);
+}
+
+.lms-dark-mode .btn-close {
+    filter: invert(1) grayscale(100%) brightness(200%);
+}
+
+/* ---------------------------------------------------------
+   SEARCH / SUGGESTION PANELS
+--------------------------------------------------------- */
+
+.lms-dark-mode .shadow,
+.lms-dark-mode .shadow-sm,
+.lms-dark-mode .shadow-lg {
+    box-shadow: 0 0.5rem 1.25rem rgba(0, 0, 0, 0.35) !important;
+}
+
+/* ---------------------------------------------------------
+   THEME TOGGLE
+--------------------------------------------------------- */
+
+.lms-theme-toggle {
+    min-width: 42px;
+    height: 38px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+    border: 0 !important;
+    box-shadow: none !important;
+    background: transparent !important;
+}
+
+.lms-theme-toggle:hover,
+.lms-theme-toggle:focus,
+.lms-theme-toggle:active {
+    border: 0 !important;
+    box-shadow: none !important;
+}
+
+.lms-theme-toggle .theme-toggle-label {
+    line-height: 1;
+}
+
+@media (max-width: 991.98px) {
+    .lms-theme-toggle {
+        margin-top: 0.5rem;
+    }
+}
