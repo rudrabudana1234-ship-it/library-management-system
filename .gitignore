@@ -1,27 +1,37 @@
+
 # Python
 venv/
+.venv/
 __pycache__/
 *.py[cod]
-*.sqlite3
-db.sqlite3
 *.log
-.env
 *.pot
-*.pyc
 .Python
-*.zip
+
+# Local databases and exported backups
+*.sqlite3
+*.sqlite3-*
+data_backup.json
+
+# Environment secrets
+.env
+.env.*
+!.env.example
+frontend/.env
+frontend/.env.local
 
 # Django
-*.log
 local_settings.py
 media/
 staticfiles/
 
 # Node / React
-frontend/node_modules/
+**/node_modules/
 frontend/dist/
-frontend/.env
-frontend/.env.local
+dist/
+
+# Local settings backup
+backend/config/settings_backup.py
 
 # IDE
 .vscode/
@@ -33,4 +43,7 @@ frontend/.env.local
 .DS_Store
 Thumbs.db
 
-**/node_modules/
+# Archives
+*.zip
+
+backend/db.sqlite3.backup

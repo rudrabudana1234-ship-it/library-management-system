@@ -1,21 +1,25 @@
 import axios from "axios";
 
+// Backend origin, configured through Vite environment variables.
+// Local development falls back to your current Django server.
+export const API_ORIGIN = (
+    import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8002"
+).replace(/\/+$/, "");
+
+// Keep all regular API calls under the /api/ prefix.
+export const API_BASE_URL = `${API_ORIGIN}/api/`;
+
+// Create the Axios instance used throughout the frontend.
 const api = axios.create({
-    baseURL: "http://127.0.0.1:8002/api/",
+    baseURL: API_BASE_URL,
     headers: {
         "Content-Type": "application/json",
     },
 });
 
-
-/* =========================================
-   REQUEST INTERCEPTOR
-   Attach access token automatically
-========================================= */
-
+// Attach the saved access token to authenticated requests.
 api.interceptors.request.use(
     (config) => {
-
         const token = localStorage.getItem("access_token");
 
         if (token) {
@@ -24,84 +28,62 @@ api.interceptors.request.use(
 
         return config;
     },
-
-    (error) => {
-        return Promise.reject(error);
-    }
+    (error) => Promise.reject(error)
 );
 
-
-/* =========================================
-   RESPONSE INTERCEPTOR
-   Handle expired access token
-========================================= */
-
+// Refresh expired access tokens and retry the original request.
 api.interceptors.response.use(
-
-    (response) => {
-        return response;
-    },
-
+    (response) => response,
     async (error) => {
-
         const originalRequest = error.config;
 
-        /* -------------------------------------
-           If access token expired
-        ------------------------------------- */
-
+        // Only attempt refresh for a 401 response, once per request.
         if (
             error.response?.status === 401 &&
+            originalRequest &&
             !originalRequest._retry &&
             localStorage.getItem("refresh_token")
         ) {
-
             originalRequest._retry = true;
 
             try {
-
                 const refreshToken =
                     localStorage.getItem("refresh_token");
 
+                // Use the same configured backend in every environment.
                 const response = await axios.post(
-                    "http://127.0.0.1:8002/api/auth/token/refresh/",
+                    `${API_BASE_URL}auth/token/refresh/`,
+                    { refresh: refreshToken },
                     {
-                        refresh: refreshToken,
+                        headers: {
+                            "Content-Type": "application/json",
+                        },
                     }
                 );
 
-                const newAccessToken =
-                    response.data.access;
-
-                /* Save new access token */
+                const newAccessToken = response.data.access;
 
                 localStorage.setItem(
                     "access_token",
                     newAccessToken
                 );
 
-                /* Update original request */
+                // Ensure the retried request uses the new token.
+                originalRequest.headers =
+                    originalRequest.headers || {};
 
                 originalRequest.headers.Authorization =
                     `Bearer ${newAccessToken}`;
 
-                /* Retry original request */
-
                 return api(originalRequest);
-
             } catch (refreshError) {
-
                 console.error(
-                    "Refresh token expired:",
+                    "Refresh token failed:",
                     refreshError
                 );
 
-                /* Remove invalid tokens */
-
                 localStorage.removeItem("access_token");
                 localStorage.removeItem("refresh_token");
-
-                /* Send user to login */
 
                 window.location.href = "/login";
 
@@ -113,13 +95,9 @@ api.interceptors.response.use(
     }
 );
 
-
 export default api;
 
-// =========================================
-// NOTIFICATION API HELPERS
-// =========================================
-
+// Notification API helpers.
 export const notificationsApi = {
     list: (params = {}) =>
         api.get("notifications/", { params }),

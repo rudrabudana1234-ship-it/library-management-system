@@ -7,8 +7,7 @@ import {
     useMemo,
     useState,
 } from "react";
-
-import api from "../services/api";
+import api, { API_ORIGIN } from "../services/api";
 
 function MyLoans() {
     const [loans, setLoans] = useState([]);
@@ -151,38 +150,22 @@ function MyLoans() {
     // =====================================================
 
     const getBookCover = (loan) => {
-        let cover = "";
+    if (!cover) {
+        return "";
+    }
 
-        if (loan.book_cover) {
-            cover = loan.book_cover;
-        } else if (loan.cover) {
-            cover = loan.cover;
-        } else if (
-            typeof loan.book === "object" &&
-            loan.book !== null
-        ) {
-            cover =
-                loan.book.cover ||
-                loan.book.cover_image ||
-                "";
-        }
+    if (
+        cover.startsWith("http://") ||
+        cover.startsWith("https://")
+    ) {
+        return cover;
+    }
 
-        if (!cover) {
-            return "";
-        }
+    if (cover.startsWith("/")) {
+        return `${API_ORIGIN}${cover}`;
+    }
 
-        if (
-            cover.startsWith("http://") ||
-            cover.startsWith("https://")
-        ) {
-            return cover;
-        }
-
-        if (cover.startsWith("/")) {
-            return `http://127.0.0.1:8002${cover}`;
-        }
-
-        return `http://127.0.0.1:8002/media/${cover}`;
+    return `${API_ORIGIN}/media/${cover}`;
     };
 
     // =====================================================

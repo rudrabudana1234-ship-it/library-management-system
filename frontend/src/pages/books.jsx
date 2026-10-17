@@ -3,8 +3,8 @@ import ButtonLoading from "../components/buttonloading";
 import EmptyState from "../components/emptystate";
 import ErrorState from "../components/errorstate";
 import { useEffect, useMemo, useRef, useState } from "react";
-import api from "../services/api";
 import { useAuth } from "../context/authcontext";
+import api, { API_ORIGIN } from "../services/api";
 
 function Books() {
     const { user } = useAuth();
@@ -288,30 +288,24 @@ function Books() {
     // =========================
     // GET COVER URL
     // =========================
+    const getCoverUrl = (cover) => {
+    if (!cover) {
+        return "";
+    }
 
-    const getCoverUrl = (book) => {
-        const cover =
-            book.cover ||
-            book.cover_image ||
-            "";
+    if (
+        cover.startsWith("http://") ||
+        cover.startsWith("https://")
+    ) {
+        return cover;
+    }
 
-        if (!cover) {
-            return "";
-        }
+    if (cover.startsWith("/")) {
+        return `${API_ORIGIN}${cover}`;
+    }
 
-        if (
-            cover.startsWith("http://") ||
-            cover.startsWith("https://")
-        ) {
-            return cover;
-        }
-
-        if (cover.startsWith("/")) {
-            return `http://127.0.0.1:8002${cover}`;
-        }
-
-        return `http://127.0.0.1:8002/media/${cover}`;
-    };
+    return `${API_ORIGIN}/media/${cover}`;
+};
 
     // =========================================================
     // FORMAT BOOK DATE
