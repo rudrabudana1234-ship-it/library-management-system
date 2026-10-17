@@ -87,20 +87,6 @@ A full-stack **Library Management System** built using Django REST Framework and
 | Bootstrap | UI styling |
 | Git & GitHub | Version control |
 
-## 📁 Project Structure
-``` text
-library-management-system/
-├── backend/
-│   ├── manage.py
-│   ├── requirements.txt
-│   └── ...
-├── frontend/
-│   ├── package.json
-│   ├── src/
-│   └── ...
-└── README.md
-```
-
 ## 📏 Core Business Rules
 - Borrowing requests must be approved before a loan is created.
 - Approving a borrowing request updates the available-copy count.
